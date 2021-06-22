@@ -120,17 +120,17 @@ struct OperationLogger : gko::log::Logger {
         for (const auto &entry : work) {
             add_or_set_member(work_object, entry.first.c_str(),
                               rapidjson::Value(rapidjson::kObjectType), alloc);
-            work_object[entry.first.c_str()].AddMember(
-                "flops", entry.second.flops / repetitions, alloc);
-            work_object[entry.first.c_str()].AddMember(
-                "memory", entry.second.memory_volume / repetitions, alloc);
+            add_or_set_member(work_object[entry.first.c_str()], "flops",
+                              entry.second.flops / repetitions, alloc);
+            add_or_set_member(work_object[entry.first.c_str()], "memory",
+                              entry.second.memory_volume / repetitions, alloc);
         }
         add_or_set_member(work_object, "total",
                           rapidjson::Value(rapidjson::kObjectType), alloc);
-        work_object["total"].AddMember("flops", total_work.flops / repetitions,
-                                       alloc);
-        work_object["total"].AddMember(
-            "memory", total_work.memory_volume / repetitions, alloc);
+        add_or_set_member(work_object["total"], "flops",
+                          total_work.flops / repetitions, alloc);
+        add_or_set_member(work_object["total"], "memory",
+                          total_work.memory_volume / repetitions, alloc);
     }
 
     OperationLogger(std::shared_ptr<const gko::Executor> exec, bool nested_name)
