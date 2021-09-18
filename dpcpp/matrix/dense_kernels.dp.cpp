@@ -947,6 +947,13 @@ void compute_conj_dot(std::shared_ptr<const DpcppExecutor> exec,
 
 GKO_INSTANTIATE_FOR_EACH_VALUE_TYPE(GKO_DECLARE_DENSE_COMPUTE_CONJ_DOT_KERNEL);
 
+template <typename ValueType>
+void compute_norm1(std::shared_ptr<const DpcppExecutor> exec,
+                   const matrix::Dense<ValueType> *x,
+                   matrix::Dense<remove_complex<ValueType>> *result)
+    GKO_NOT_IMPLEMENTED;
+
+GKO_INSTANTIATE_FOR_EACH_VALUE_TYPE(GKO_DECLARE_DENSE_COMPUTE_NORM1_KERNEL);
 
 template <typename ValueType>
 void compute_norm1(std::shared_ptr<const DpcppExecutor> exec,
