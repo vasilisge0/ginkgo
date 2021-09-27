@@ -617,8 +617,8 @@ TYPED_TEST(Dense, ComputesNorm1)
 
     mtx->compute_norm1(result.get());
 
-    EXPECT_EQ(result->at(0, 0), T_nc{3.0});
-    EXPECT_EQ(result->at(0, 1), T_nc{5.0});
+    EXPECT_EQ(result->at(0, 0), T_nc{5.0});
+    EXPECT_EQ(result->at(0, 1), T_nc{7.0});
 }
 
 
@@ -635,8 +635,8 @@ TYPED_TEST(Dense, ComputesNorm1Mixed)
 
     mtx->compute_norm1(result.get());
 
-    EXPECT_EQ(result->at(0, 0), MixedT_nc{3.0});
-    EXPECT_EQ(result->at(0, 1), MixedT_nc{5.0});
+    EXPECT_EQ(result->at(0, 0), MixedT_nc{5.0});
+    EXPECT_EQ(result->at(0, 1), MixedT_nc{7.0});
 }
 
 
