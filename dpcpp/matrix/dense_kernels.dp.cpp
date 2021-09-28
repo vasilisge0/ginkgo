@@ -956,17 +956,13 @@ void compute_norm1(std::shared_ptr<const DpcppExecutor> exec,
     const auto n_rows = x->get_size()[0];
     const auto n_cols = x->get_size()[1];
 
-    std::vector<ValueType> tmp_res(n_cols);
-    sycl::buffer<sycl::cl_int, 1> buf_tmp(tmp_res.data(), n_cols);
+    auto res = result->get_values();
 
     exec->get_queue()->submit([&](sycl::handler& cgh) {
-        // auto accA = bufA.get_access<sycl::access::mode::discard_write>(cgh);
-        auto acc = buf_tmp.get_access<sycl::access::mode::atomic>(cgh);
-
         cgh.parallel_for(sycl::range<2>{n_rows, n_cols}, [=](sycl::id<2> idx) {
             auto row = static_cast<size_type>(idx[0]);
             auto col = static_cast<size_type>(idx[1]);
-            acc[col].fetch_add(abs(x[col + n_cols * row]));
+            atomic_add(&(res[col]), std::abs(x_vals[col + n_cols * row]));
         });
     });
 }
