@@ -957,6 +957,12 @@ void compute_norm1(std::shared_ptr<const DpcppExecutor> exec,
     const auto n_cols = x->get_size()[1];
 
     auto res = result->get_values();
+    exec->get_queue()->submit([&](sycl::handler& cgh) {
+        cgh.parallel_for(sycl::range<1>{n_cols}, [=](sycl::id<1> idx) {
+            auto col = static_cast<size_type>(idx[0]);
+            res[col] = 0;
+        });
+    });
 
     exec->get_queue()->submit([&](sycl::handler& cgh) {
         cgh.parallel_for(sycl::range<2>{n_rows, n_cols}, [=](sycl::id<2> idx) {
