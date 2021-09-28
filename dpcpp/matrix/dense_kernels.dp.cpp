@@ -906,9 +906,20 @@ GKO_INSTANTIATE_FOR_EACH_VALUE_TYPE(GKO_DECLARE_DENSE_COMPUTE_CONJ_DOT_KERNEL);
 
 template <typename ValueType>
 void compute_norm1(std::shared_ptr<const DpcppExecutor> exec,
-                   const matrix::Dense<ValueType> *x,
-                   matrix::Dense<remove_complex<ValueType>> *result)
-    GKO_NOT_IMPLEMENTED;
+                   const matrix::Dense<ValueType>* x,
+                   matrix::Dense<remove_complex<ValueType>>* result)
+{
+    const auto x_vals = x->get_const_values();
+    const auto n_rows = x->get_size()[0];
+    const auto n_cols = x->get_size()[1];
+    exec->get_queue()->submit([&](sycl::handler& cgh) {
+        cgh.parallel_for(sycl::range<2>{n_rows, n_cols}, [=](sycl::id<2> idx) {
+            auto row = static_cast<size_type>(idx[0]);
+            auto col = static_cast<size_type>(idx[1]);
+            result[col] += abs(x[col + n_cols * row]);
+        });
+    });
+}
 
 GKO_INSTANTIATE_FOR_EACH_VALUE_TYPE(GKO_DECLARE_DENSE_COMPUTE_NORM1_KERNEL);
 
