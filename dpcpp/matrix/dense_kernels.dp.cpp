@@ -362,6 +362,48 @@ GKO_ENABLE_IMPLEMENTATION_CONFIG_SELECTION(finalize_sqrt_reduce_computation,
 GKO_ENABLE_DEFAULT_CONFIG_CALL(finalize_sqrt_reduce_computation_call,
                                finalize_sqrt_reduce_computation, kcfg_1d_list)
 
+template <std::uint32_t cfg = KCFG_1D::encode(256, 16), typename ValueType>
+void compute_partial_norm1(
+    size_type num_rows, const ValueType* __restrict__ x, size_type stride_x,
+    remove_complex<ValueType>* __restrict__ work, sycl::nd_item<3> item_ct1,
+    UninitializedArray<remove_complex<ValueType>, KCFG_1D::decode<0>(cfg)>&
+        tmp_work)
+{
+    using norm_type = remove_complex<ValueType>;
+    compute_partial_reduce<cfg>(
+        num_rows, work,
+        [x, stride_x](size_type i) { return abs(x[i * stride_x]); },
+        [](const norm_type& x, const norm_type& y) { return x + y; }, item_ct1,
+        tmp_work);
+}
+
+template <std::uint32_t cfg = KCFG_1D::encode(256, 16), typename ValueType>
+void compute_partial_norm1(dim3 grid, dim3 block,
+                           size_type dynamic_shared_memory, sycl::queue* queue,
+                           size_type num_rows, const ValueType* x,
+                           size_type stride_x, remove_complex<ValueType>* work)
+{
+    constexpr auto wg_size = KCFG_1D::decode<0>(cfg);
+    queue->submit([&](sycl::handler& cgh) {
+        sycl::accessor<UninitializedArray<remove_complex<ValueType>, wg_size>,
+                       0, sycl::access::mode::read_write,
+                       sycl::access::target::local>
+            tmp_work_acc_ct1(cgh);
+
+        cgh.parallel_for(
+            sycl_nd_range(grid, block), [=](sycl::nd_item<3> item_ct1) {
+                compute_partial_norm1<cfg>(num_rows, x, stride_x, work,
+                                           item_ct1,
+                                           *tmp_work_acc_ct1.get_pointer());
+            });
+    });
+}
+
+GKO_ENABLE_IMPLEMENTATION_CONFIG_SELECTION(compute_partial_norm1,
+                                           compute_partial_norm1)
+GKO_ENABLE_DEFAULT_CONFIG_CALL(compute_partial_norm1_call,
+                               compute_partial_norm1, kcfg_1d_list)
+
 
 template <typename ValueType, typename IndexType>
 void fill_in_coo(size_type num_rows, size_type num_cols, size_type stride,
@@ -905,30 +947,47 @@ void compute_conj_dot(std::shared_ptr<const DpcppExecutor> exec,
 
 GKO_INSTANTIATE_FOR_EACH_VALUE_TYPE(GKO_DECLARE_DENSE_COMPUTE_CONJ_DOT_KERNEL);
 
+
 template <typename ValueType>
 void compute_norm1(std::shared_ptr<const DpcppExecutor> exec,
                    const matrix::Dense<ValueType>* x,
                    matrix::Dense<remove_complex<ValueType>>* result)
 {
-    const auto x_vals = x->get_const_values();
-    const auto n_rows = x->get_size()[0];
-    const auto n_cols = x->get_size()[1];
+    using norm_type = remove_complex<ValueType>;
 
     auto res = result->get_values();
-    exec->get_queue()->submit([&](sycl::handler& cgh) {
-        cgh.parallel_for(sycl::range<1>{n_cols}, [=](sycl::id<1> idx) {
-            auto col = static_cast<size_type>(idx[0]);
-            res[col] = 0;
-        });
-    });
+    auto n_cols = x->get_size()[1];
 
     exec->get_queue()->submit([&](sycl::handler& cgh) {
-        cgh.parallel_for(sycl::range<2>{n_rows, n_cols}, [=](sycl::id<2> idx) {
-            auto row = static_cast<size_type>(idx[0]);
-            auto col = static_cast<size_type>(idx[1]);
-            atomic_add(&(res[col]), std::abs(x_vals[col + n_cols * row]));
-        });
+        cgh.parallel_for(sycl::range<1>{n_cols},
+                         [=](sycl::id<1> idx) { res[idx[0]] = 0; });
     });
+
+
+    // TODO: these are tuning parameters obtained experimentally, once
+    // we decide how to handle this uniformly, they should be modified
+    // appropriately
+    constexpr int work_per_thread = 32;
+    auto queue = exec->get_queue();
+    constexpr auto kcfg_1d_array = as_array(kcfg_1d_list);
+    const std::uint32_t cfg =
+        get_first_cfg(kcfg_1d_array, [&queue](std::uint32_t cfg) {
+            return validate(queue, KCFG_1D::decode<0>(cfg),
+                            KCFG_1D::decode<1>(cfg));
+        });
+    const auto wg_size = KCFG_1D::decode<0>(cfg);
+    const auto sg_size = KCFG_1D::decode<1>(cfg);
+
+    const auto work_per_block = work_per_thread * wg_size;
+    const dim3 grid_dim = ceildiv(x->get_size()[0], work_per_block);
+    const dim3 block_dim{sg_size, 1, wg_size / sg_size};
+    Array<norm_type> work(exec, grid_dim.x);
+    // TODO: write a kernel which does this more efficiently
+    for (size_type col = 0; col < x->get_size()[1]; ++col) {
+        kernel::compute_partial_norm1_call(
+            cfg, grid_dim, block_dim, 0, exec->get_queue(), x->get_size()[0],
+            x->get_const_values() + col, x->get_stride(), work.get_data());
+    }
 }
 
 GKO_INSTANTIATE_FOR_EACH_VALUE_TYPE(GKO_DECLARE_DENSE_COMPUTE_NORM1_KERNEL);
