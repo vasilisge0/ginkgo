@@ -48,6 +48,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
 #include "core/components/absolute_array.hpp"
+#include "core/components/csr_column_vector_sum.hpp"
 #include "core/components/fill_array.hpp"
 #include "core/matrix/csr_kernels.hpp"
 
@@ -89,6 +90,8 @@ GKO_REGISTER_OPERATION(inplace_absolute_array,
                        components::inplace_absolute_array);
 GKO_REGISTER_OPERATION(outplace_absolute_array,
                        components::outplace_absolute_array);
+GKO_REGISTER_OPERATION(compute_column_vector_sum,
+                       csr::compute_column_vector_sum);
 
 
 }  // anonymous namespace
@@ -558,6 +561,15 @@ void Csr<ValueType, IndexType>::compute_absolute_inplace()
         this->get_values(), this->get_num_stored_elements()));
 }
 
+template <typename ValueType, typename IndexType>
+void Csr<ValueType, IndexType>::compute_column_vector_sum(
+    Dense<ValueType>* result)
+{
+    auto exec = this->get_executor();
+
+    exec->run(
+        csr::make_column_vector_sum(this->get_values(), this->get_row_ptrs()));
+}
 
 template <typename ValueType, typename IndexType>
 std::unique_ptr<typename Csr<ValueType, IndexType>::absolute_type>

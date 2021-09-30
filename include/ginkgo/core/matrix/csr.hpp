@@ -768,6 +768,11 @@ public:
     void compute_absolute_inplace() override;
 
     /**
+     * computes the sum of all column vectors
+     */
+    void compute_column_vector_sum(Dense<ValueType>* result) const;
+
+    /**
      * Sorts all (value, col_idx) pairs in each row by column index
      */
     void sort_by_column_index();
