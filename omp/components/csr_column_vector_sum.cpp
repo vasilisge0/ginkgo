@@ -34,8 +34,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <numeric>
 
 
+#include <ginkgo/core/base/math.hpp>
 #include <ginkgo/core/base/types.hpp>
 
+#include "core/components/csr_column_vector_sum.hpp"
 
 namespace gko {
 namespace kernels {
@@ -43,9 +45,11 @@ namespace omp {
 namespace csr {
 
 template <typename ValueType, typename IndexType>
-void compute_column_vector_sum(const ValueType* data, const IndexType* row_ptrs,
+void compute_column_vector_sum(std::shared_ptr<const DefaultExecutor> exec,
+                               const ValueType* data, const IndexType* row_ptrs,
                                const size_type num_rows, ValueType* result)
 {
+#pragma omp parallel for
     for (size_type i = 0; i < num_rows; ++i) {
         auto tmp = zero<ValueType>();
         size_type start{row_ptrs[i]};
@@ -56,6 +60,9 @@ void compute_column_vector_sum(const ValueType* data, const IndexType* row_ptrs,
         result[i] = tmp;
     }
 }
+
+GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
+    GKO_DECLARE_COMPUTE_COLUMN_VECTOR_SUM_KERNEL);
 
 }  // namespace csr
 }  // namespace omp

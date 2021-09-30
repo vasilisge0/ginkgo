@@ -7,6 +7,7 @@ target_sources(ginkgo_reference
     components/reduce_array.cpp
     components/precision_conversion.cpp
     components/prefix_sum.cpp
+    components/csr_column_vector_sum.cpp
     factorization/factorization_kernels.cpp
     factorization/ic_kernels.cpp
     factorization/ilu_kernels.cpp

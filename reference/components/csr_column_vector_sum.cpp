@@ -30,38 +30,40 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ******************************<GINKGO LICENSE>*******************************/
 
-#ifndef GKO_CORE_COMPONENTS_COLUMN_VECTOR_SUM_HPP_
-#define GKO_CORE_COMPONENTS_COLUMN_VECTOR_SUM_HPP_
-
 #include <algorithm>
 #include <numeric>
 
 
-#include <ginkgo/core/base/executor.hpp>
+#include <ginkgo/core/base/math.hpp>
 #include <ginkgo/core/base/types.hpp>
 
-#include "core/base/kernel_declaration.hpp"
+#include "core/components/csr_column_vector_sum.hpp"
 
 namespace gko {
 namespace kernels {
+namespace reference {
+namespace csr {
 
-#define GKO_DECLARE_COMPUTE_COLUMN_VECTOR_SUM_KERNEL(ValueType, IndexType)  \
-    void compute_column_vector_sum(                                         \
-        std::shared_ptr<const DefaultExecutor> exec, const ValueType* data, \
-        const IndexType* row_ptrs, const size_type num_rows,                \
-        ValueType* result)
+template <typename ValueType, typename IndexType>
+void compute_column_vector_sum(std::shared_ptr<const DefaultExecutor> exec,
+                               const ValueType* data, const IndexType* row_ptrs,
+                               const size_type num_rows, ValueType* result)
+{
+    for (size_type i = 0; i < num_rows; ++i) {
+        auto tmp = zero<ValueType>();
+        size_type start{row_ptrs[i]};
+        size_type end{row_ptrs[i + 1]};
+        for (size_type j = start; j < end; ++j) {
+            tmp += data[j];
+        }
+        result[i] = tmp;
+    }
+}
 
-#define GKO_DECLARE_ALL_AS_TEMPLATES                  \
-    template <typename ValueType, typename IndexType> \
-    GKO_DECLARE_COMPUTE_COLUMN_VECTOR_SUM_KERNEL(ValueType, IndexType)
+GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
+    GKO_DECLARE_COMPUTE_COLUMN_VECTOR_SUM_KERNEL);
 
-
-GKO_DECLARE_FOR_ALL_EXECUTOR_NAMESPACES(csr, GKO_DECLARE_ALL_AS_TEMPLATES);
-
-
-#undef GKO_DECLARE_ALL_AS_TEMPLATES
-
+}  // namespace csr
+}  // namespace reference
 }  // namespace kernels
 }  // namespace gko
-
-#endif  // GKO_CORE_COMPONENTS_COLUMN_VECTOR_SUM_HPP_

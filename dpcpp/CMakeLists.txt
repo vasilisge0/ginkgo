@@ -21,6 +21,7 @@ target_sources(ginkgo_dpcpp
     components/fill_array.dp.cpp
     components/reduce_array.dp.cpp
     components/prefix_sum.dp.cpp
+    components/csr_column_vector_sum.dp.cpp
     factorization/ic_kernels.dp.cpp
     factorization/ilu_kernels.dp.cpp
     factorization/factorization_kernels.dp.cpp

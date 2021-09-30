@@ -161,6 +161,7 @@ set(GINKGO_HIP_SOURCES
     components/fill_array.hip.cpp
     components/reduce_array.hip.cpp
     components/prefix_sum.hip.cpp
+    components/csr_column_vector_sum.hip.cpp
     factorization/factorization_kernels.hip.cpp
     factorization/ic_kernels.hip.cpp
     factorization/ilu_kernels.hip.cpp

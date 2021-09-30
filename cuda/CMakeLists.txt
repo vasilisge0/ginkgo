@@ -90,6 +90,7 @@ target_sources(ginkgo_cuda
     components/fill_array.cu
     components/reduce_array.cu
     components/prefix_sum.cu
+    components/csr_column_vector_sum.cu
     factorization/factorization_kernels.cu
     factorization/ic_kernels.cu
     factorization/ilu_kernels.cu

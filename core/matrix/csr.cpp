@@ -563,12 +563,13 @@ void Csr<ValueType, IndexType>::compute_absolute_inplace()
 
 template <typename ValueType, typename IndexType>
 void Csr<ValueType, IndexType>::compute_column_vector_sum(
-    Dense<ValueType>* result)
+    Dense<ValueType>* result) const
 {
     auto exec = this->get_executor();
 
-    exec->run(
-        csr::make_column_vector_sum(this->get_values(), this->get_row_ptrs()));
+    exec->run(csr::make_compute_column_vector_sum(
+        this->get_const_values(), this->get_const_row_ptrs(),
+        this->get_size()[0], result->get_values()));
 }
 
 template <typename ValueType, typename IndexType>
