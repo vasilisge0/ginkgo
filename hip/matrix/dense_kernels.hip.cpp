@@ -260,8 +260,8 @@ GKO_INSTANTIATE_FOR_EACH_VALUE_TYPE(GKO_DECLARE_DENSE_COMPUTE_NORM2_KERNEL);
 
 template <typename ValueType>
 void compute_norm1(std::shared_ptr<const HipExecutor> exec,
-                   const matrix::Dense<ValueType> *x,
-                   matrix::Dense<remove_complex<ValueType>> *result)
+                   const matrix::Dense<ValueType>* x,
+                   matrix::Dense<remove_complex<ValueType>>* result)
 {
     using norm_type = remove_complex<ValueType>;
     // TODO: these are tuning parameters obtained experimentally, once
