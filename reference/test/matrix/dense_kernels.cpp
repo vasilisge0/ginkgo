@@ -629,15 +629,16 @@ TYPED_TEST(Dense, ComputesNorm1Mixed)
     using MixedT = typename MixedMtx::value_type;
     using MixedT_nc = gko::remove_complex<MixedT>;
     using MixedNormVector = gko::matrix::Dense<MixedT_nc>;
-    auto mtx(gko::initialize<MixedMtx>(
-        {I<MixedT>{1.0, 0.0}, I<MixedT>{2.0, 3.0}, I<MixedT>{2.0, 4.0}},
-        this->exec));
+    auto mtx(
+        gko::initialize<MixedMtx>({I<MixedT>{1.0, 0.0}, I<MixedT>{2.0, 3.0},
+                                   I<MixedT>{2.0, 4.0}, I<MixedT>{-1.0, -1.0}},
+                                  this->exec));
     auto result = MixedNormVector::create(this->exec, gko::dim<2>{1, 2});
 
     mtx->compute_norm1(result.get());
 
-    EXPECT_EQ(result->at(0, 0), MixedT_nc{5.0});
-    EXPECT_EQ(result->at(0, 1), MixedT_nc{7.0});
+    EXPECT_EQ(result->at(0, 0), MixedT_nc{6.0});
+    EXPECT_EQ(result->at(0, 1), MixedT_nc{8.0});
 }
 
 
