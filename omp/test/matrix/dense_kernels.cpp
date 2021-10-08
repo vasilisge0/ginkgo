@@ -262,7 +262,7 @@ TEST_F(Dense, ComputesNorm1IsEquivalentToRef)
     x->compute_norm1(norm_expected.get());
     dx->compute_norm1(dnorm.get());
 
-    GKO_ASSERT_MTX_NEAR(norm_expected, dnorm, r<vtype>::value;
+    GKO_ASSERT_MTX_NEAR(norm_expected, dnorm, r<vtype>::value());
 }
 
 TEST_F(Dense, SimpleApplyIsEquivalentToRef)
