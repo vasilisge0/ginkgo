@@ -132,6 +132,7 @@ inline void conversion_helper(Bccoo<ValueType, IndexType>* result,
 {
     auto exec = source->get_executor();
 
+    bool block_compression = false;
     size_type block_size = 10;
     exec->run(bccoo::make_get_default_block_size(&block_size));
     size_type num_stored_nonzeros = 0;
@@ -139,7 +140,8 @@ inline void conversion_helper(Bccoo<ValueType, IndexType>* result,
     size_type mem_size = 0;
     exec->run(dense::make_mem_size_bccoo(source, block_size, &mem_size));
     auto tmp = Bccoo<ValueType, IndexType>::create(
-        exec, source->get_size(), num_stored_nonzeros, block_size, mem_size);
+        exec, source->get_size(), num_stored_nonzeros, block_size, mem_size,
+        block_compression);
     exec->run(op(source, tmp.get()));
     tmp->move_to(result);
 }
