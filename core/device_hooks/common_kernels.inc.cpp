@@ -62,6 +62,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "core/matrix/sellp_kernels.hpp"
 #include "core/matrix/sparsity_csr_kernels.hpp"
 #include "core/multigrid/amgx_pgm_kernels.hpp"
+#include "core/multigrid/selection_kernels.hpp"
 #include "core/preconditioner/isai_kernels.hpp"
 #include "core/preconditioner/jacobi_kernels.hpp"
 #include "core/reorder/rcm_kernels.hpp"
@@ -746,6 +747,15 @@ GKO_STUB_NON_COMPLEX_VALUE_AND_INDEX_TYPE(
 
 
 }  // namespace amgx_pgm
+
+
+namespace selection {
+
+
+GKO_STUB_VALUE_AND_INDEX_TYPE(GKO_DECLARE_SELECTION_FILL_RESTRICT_OP);
+
+
+}  // namespace selection
 
 
 namespace set_all_statuses {
