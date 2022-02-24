@@ -212,7 +212,7 @@ protected:
     }
 
     std::shared_ptr<Mtx> gen_mtx(int num_rows, int num_cols, int min_cols,
-                                 int max_cols)
+                                     int max_cols)
     {
         auto mapping =
             gko::test::generate_random_array<gko::distributed::comm_index_type>(
@@ -229,7 +229,7 @@ protected:
         Config::preprocess(data);
         auto dist_mtx = Mtx::create(ref, comm);
         dist_mtx->read_distributed(data, part.get());
-        return gko::share(gko::clone(exec, dist_mtx));
+        return gko::share(dist_mtx);
     }
 
     template <typename ValueType, typename IndexType>
@@ -256,7 +256,7 @@ protected:
             gen_dense_data<typename DistVecType::value_type, global_index_type>(
                 global_size),
             part.get());
-        return gko::share(gko::clone(exec, dist_result));
+        return gko::share(dist_result);
     }
 
     template <typename VecType = LocalVec>
@@ -286,7 +286,7 @@ protected:
             gen_dense_data<typename DistVecType::value_type, global_index_type>(
                 global_size),
             part.get());
-        return gko::share(gko::clone(exec, dist_result));
+        return gko::share(dist_result);
     }
 
     template <typename VecType>
@@ -424,7 +424,7 @@ protected:
         auto one = gko::initialize<LocalVec>({gko::one<value_type>()}, exec);
         auto neg_one =
             gko::initialize<LocalVec>({-gko::one<value_type>()}, exec);
-        auto norm = DistVecType::local_vector_type::absolute_type::create(
+        auto norm = DistVecType::local_vector_type::create(
             ref, gko::dim<2>{1, b->get_size()[1]});
         auto dist_res = gko::clone(b);
         mtx->apply(neg_one.get(), x.get(), one.get(), dist_res.get());
@@ -448,7 +448,7 @@ protected:
         auto one = gko::initialize<LocalVec>({gko::one<value_type>()}, exec);
         auto neg_one =
             gko::initialize<LocalVec>({-gko::one<value_type>()}, exec);
-        auto norm = DistVecType::local_vector_type::absolute_type::create(
+        auto norm = DistVecType::local_vector_type::create(
             ref, gko::dim<2>{1, b->get_size()[1]});
         auto dist_res = gko::clone(b);
         // compute rx = (x_sol - beta * x_old) / alpha, since A * rx = b
