@@ -177,7 +177,9 @@ void AmgxPgm<ValueType, IndexType>::generate()
     // TODO: use less memory footprint to improve it
     auto coarse_matrix =
         share(csr_type::create(exec, gko::dim<2>{coarse_dim, coarse_dim}));
+    coarse_matrix->set_strategy(amgxpgm_op->get_strategy());
     auto tmp = csr_type::create(exec, gko::dim<2>{fine_dim, coarse_dim});
+    tmp->set_strategy(amgxpgm_op->get_strategy());
     amgxpgm_op->apply(prolong_csr.get(), tmp.get());
     restrict_op->apply(tmp.get(), coarse_matrix.get());
 
