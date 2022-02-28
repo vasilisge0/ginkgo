@@ -123,8 +123,9 @@ int main(int argc, char* argv[])
         }
     }
 
-    // auto A = share(mtx::create(exec, A_data.size));
-    auto A = share(gko::read<mtx>(std::ifstream("data/A.mtx"), exec));
+    auto A = share(mtx::create(exec, A_data.size));
+    A->read(A_data);
+    // auto A = share(gko::read<mtx>(std::ifstream("data/A.mtx"), exec));
     A->set_strategy(std::make_shared<mtx::sparselib>());
     // Create RHS as 1 and initial guess as 0
     gko::size_type size = A->get_size()[0];
@@ -177,9 +178,6 @@ int main(int argc, char* argv[])
     // Create MultigridLevel factory
     auto coarse_select_gen =
         selection::build().with_num_jumps(num_jumps).on(exec);
-    std::cout << "Selection coarse size "
-              << coarse_select_gen->generate(A)->get_coarse_op()->get_size()
-              << std::endl;
 
     // Create CoarsestSolver factory
     auto coarsest_gen = gko::share(
@@ -192,7 +190,7 @@ int main(int argc, char* argv[])
     // Create multigrid factory
     auto multigrid_gen = mg::build()
                              .with_max_levels(10u)
-                             .with_min_coarse_rows(64u)
+                             .with_min_coarse_rows(10u)
                              .with_pre_smoother(smoother_gen)
                              .with_post_uses_pre(true)
                              .with_mg_level(gko::share(mg_level_gen))
@@ -200,11 +198,14 @@ int main(int argc, char* argv[])
                              .with_zero_guess(true)
                              .with_criteria(iter_stop, tol_stop)
                              .on(exec);
+    std::cout << "MG num levels: "
+              << multigrid_gen->generate(A)->get_parameters().mg_level.size()
+              << std::endl;
     if (use_coarse_select) {
         std::cout << "Using Selection" << std::endl;
         multigrid_gen = mg::build()
                             .with_max_levels(10u)
-                            .with_min_coarse_rows(64u)
+                            .with_min_coarse_rows(10u)
                             .with_pre_smoother(smoother_gen)
                             .with_post_uses_pre(true)
                             .with_mg_level(gko::share(coarse_select_gen))
