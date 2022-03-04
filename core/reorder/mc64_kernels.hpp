@@ -41,6 +41,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <ginkgo/core/base/executor.hpp>
 #include <ginkgo/core/base/types.hpp>
 #include <ginkgo/core/matrix/csr.hpp>
+#include <ginkgo/core/reorder/mc64.hpp>
 
 
 #include "core/base/kernel_declaration.hpp"
@@ -53,7 +54,8 @@ namespace kernels {
 #define GKO_DECLARE_MC64_INITIALIZE_WEIGHTS_KERNEL(ValueType, IndexType)  \
     void initialize_weights(std::shared_ptr<const DefaultExecutor> exec,  \
                             const matrix::Csr<ValueType, IndexType>* mtx, \
-                            Array<remove_complex<ValueType>>& workspace)
+                            Array<remove_complex<ValueType>>& workspace,  \
+                            gko::reorder::reordering_strategy strategy)
 
 
 #define GKO_DECLARE_MC64_INITIAL_MATCHING_KERNEL(ValueType, IndexType)    \
@@ -73,13 +75,23 @@ namespace kernels {
         Array<IndexType>& inv_permutation, IndexType root,                     \
         Array<IndexType>& parents)
 
-#define GKO_DECLARE_ALL_AS_TEMPLATES                                  \
-    template <typename ValueType, typename IndexType>                 \
-    GKO_DECLARE_MC64_INITIALIZE_WEIGHTS_KERNEL(ValueType, IndexType); \
-    template <typename ValueType, typename IndexType>                 \
-    GKO_DECLARE_MC64_INITIAL_MATCHING_KERNEL(ValueType, IndexType);   \
-    template <typename ValueType, typename IndexType>                 \
-    GKO_DECLARE_MC64_SHORTEST_AUGMENTING_PATH_KERNEL(ValueType, IndexType)
+
+#define GKO_DECLARE_MC64_COMPUTE_SCALING_KERNEL(ValueType, IndexType)  \
+    void compute_scaling(std::shared_ptr<const DefaultExecutor> exec,  \
+                         const matrix::Csr<ValueType, IndexType>* mtx, \
+                         Array<remove_complex<ValueType>>& workspace,  \
+                         gko::reorder::reordering_strategy strategy)
+
+
+#define GKO_DECLARE_ALL_AS_TEMPLATES                                        \
+    template <typename ValueType, typename IndexType>                       \
+    GKO_DECLARE_MC64_INITIALIZE_WEIGHTS_KERNEL(ValueType, IndexType);       \
+    template <typename ValueType, typename IndexType>                       \
+    GKO_DECLARE_MC64_INITIAL_MATCHING_KERNEL(ValueType, IndexType);         \
+    template <typename ValueType, typename IndexType>                       \
+    GKO_DECLARE_MC64_SHORTEST_AUGMENTING_PATH_KERNEL(ValueType, IndexType); \
+    template <typename ValueType, typename IndexType>                       \
+    GKO_DECLARE_MC64_COMPUTE_SCALING_KERNEL(ValueType, IndexType)
 
 
 GKO_DECLARE_FOR_ALL_EXECUTOR_NAMESPACES(mc64, GKO_DECLARE_ALL_AS_TEMPLATES);

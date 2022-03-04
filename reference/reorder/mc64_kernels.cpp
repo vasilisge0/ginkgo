@@ -34,6 +34,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
 #include <algorithm>
+#include <cmath>
 #include <iterator>
 #include <memory>
 #include <queue>
@@ -69,7 +70,8 @@ namespace mc64 {
 template <typename ValueType, typename IndexType>
 void initialize_weights(std::shared_ptr<const DefaultExecutor> exec,
                         const matrix::Csr<ValueType, IndexType>* mtx,
-                        Array<remove_complex<ValueType>>& workspace)
+                        Array<remove_complex<ValueType>>& workspace,
+                        gko::reorder::reordering_strategy strategy)
 {
     constexpr auto inf =
         std::numeric_limits<remove_complex<ValueType>>::infinity();
@@ -78,7 +80,10 @@ void initialize_weights(std::shared_ptr<const DefaultExecutor> exec,
     const auto row_ptrs = mtx->get_const_row_ptrs();
     const auto col_idxs = mtx->get_const_col_idxs();
     const auto values = mtx->get_const_values();
-    auto weight = [](ValueType a) { return abs(a); };
+    auto weight =
+        strategy == gko::reorder::reordering_strategy::max_diagonal_sum
+            ? [](ValueType a) { return abs(a); }
+            : [](ValueType a) { return std::log(abs(a)); };
     workspace.resize_and_reset(nnz + 2 * num_rows);
     auto weights = workspace.get_data();
     auto u = weights + nnz;
@@ -93,12 +98,12 @@ void initialize_weights(std::shared_ptr<const DefaultExecutor> exec,
         const auto row_end = row_ptrs[row + 1];
         auto row_max = zero<remove_complex<ValueType>>();
         for (IndexType idx = row_begin; idx < row_end; idx++) {
-            const auto w = abs(values[idx]);
+            const auto w = weight(values[idx]);
             if (w > row_max) row_max = w;
         }
 
         for (IndexType idx = row_begin; idx < row_end; idx++) {
-            const auto c = weight(row_max) - weight(values[idx]);
+            const auto c = row_max - weight(values[idx]);
             weights[idx] = c;
             const auto col = col_idxs[idx];
             if (c < u[col]) u[col] = c;
@@ -172,7 +177,8 @@ void initial_matching(std::shared_ptr<const DefaultExecutor> exec,
         bool found = false;
         for (IndexType idx = row_begin; idx < row_end; idx++) {
             const auto col = col_idxs[idx];
-            if (weight(row, col, idx) == zero<ValueType>()) {
+            if (weight(row, col, idx) <
+                std::numeric_limits<ValueType>::epsilon()) {
                 const auto row_1 = ip[col];
                 const auto row_1_begin = row_ptrs[row_1];
                 const auto row_1_end = row_ptrs[row_1 + 1];
@@ -300,6 +306,49 @@ void shortest_augmenting_path(std::shared_ptr<const DefaultExecutor> exec,
 
 GKO_INSTANTIATE_FOR_EACH_NON_COMPLEX_VALUE_AND_INDEX_TYPE(
     GKO_DECLARE_MC64_SHORTEST_AUGMENTING_PATH_KERNEL);
+
+
+template <typename ValueType, typename IndexType>
+void compute_scaling(std::shared_ptr<const DefaultExecutor> exec,
+                     const matrix::Csr<ValueType, IndexType>* mtx,
+                     Array<remove_complex<ValueType>>& workspace,
+                     gko::reorder::reordering_strategy strategy)
+{
+    constexpr auto inf =
+        std::numeric_limits<remove_complex<ValueType>>::infinity();
+    const auto nnz = mtx->get_num_stored_elements();
+    const auto num_rows = mtx->get_size()[0];
+    const auto row_ptrs = mtx->get_const_row_ptrs();
+    const auto col_idxs = mtx->get_const_col_idxs();
+    const auto values = mtx->get_const_values();
+    auto weights = workspace.get_data();
+    auto u = weights + nnz;
+    auto v = u + num_rows;
+
+    if (strategy == gko::reorder::reordering_strategy::max_diagonal_product) {
+        for (size_type i = 0; i < num_rows; i++) {
+            u[i] = std::exp(u[i]);
+            v[i] = std::exp(u[i]);
+        }
+    }
+
+    for (size_type row = 0; row < num_rows; row++) {
+        const auto row_begin = row_ptrs[row];
+        const auto row_end = row_ptrs[row + 1];
+        auto row_max = zero<remove_complex<ValueType>>();
+        for (size_type idx = row_begin; idx < row_end; idx++) {
+            const auto abs_v = abs(values[idx]);
+            if (row_max < abs_v) {
+                row_max = abs_v;
+            }
+        }
+        v[row] /= row_max;
+    }
+}
+
+GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
+    GKO_DECLARE_MC64_COMPUTE_SCALING_KERNEL);
+
 }  // namespace mc64
 }  // namespace reference
 }  // namespace kernels

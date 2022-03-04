@@ -31,6 +31,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ******************************<GINKGO LICENSE>*******************************/
 
 #include <algorithm>
+#include <cmath>
 #include <memory>
 
 
@@ -70,38 +71,88 @@ protected:
                                             {0., 0., 0., 4., 2., 0.},
                                             {0., 5., 8., 0., 0., 0.}},
                                            ref)),
-          expected_workspace{
+          expected_workspace_sum{
               ref,
               I<real_type>({2., 1., 0., 0., 4., 0., 2., 0., 1., 0., 2., 3., 0.,
                             0., 1., 0., 0., 0., 1., 0., 0., 0., 0., 0., 0.})},
+          expected_workspace_product{ref, I<real_type>({
+                                              std::log(3.),
+                                              std::log(1.5),
+                                              0.,
+                                              0.,
+                                              std::log(5.),
+                                              0.,
+                                              std::log(1.5),
+                                              0.,
+                                              std::log(4. / 3.),
+                                              0.,
+                                              std::log(2.),
+                                              std::log(1.6),
+                                              0.,
+                                              0.,
+                                              std::log(1.5),
+                                              0.,
+                                              0.,
+                                              0.,
+                                              std::log(4. / 3.),
+                                              0.,
+                                              0.,
+                                              0.,
+                                              0.,
+                                              0.,
+                                              0.,
+                                          })},
           expected_perm{ref, I<index_type>({1, 0, 3, 5, -1, 2})},
-          expected_inv_perm{ref, I<index_type>({1, 0, 5, 2, -1, 3})}
+          expected_inv_perm{ref, I<index_type>({1, 0, 5, 2, -1, 3})},
+          tolerance{std::numeric_limits<real_type>::epsilon()}
     {}
 
     std::shared_ptr<const gko::ReferenceExecutor> ref;
     gko::Array<real_type> tmp;
     std::shared_ptr<matrix_type> mtx;
-    gko::Array<real_type> expected_workspace;
+    gko::Array<real_type> expected_workspace_sum;
+    gko::Array<real_type> expected_workspace_product;
     gko::Array<index_type> expected_perm;
     gko::Array<index_type> expected_inv_perm;
+    const real_type tolerance;
 };
 
 TYPED_TEST_SUITE(Mc64, gko::test::ValueIndexTypes, PairTypenameNameGenerator);
 
 
-TYPED_TEST(Mc64, InitializeWeightsExample)
+TYPED_TEST(Mc64, InitializeWeightsExampleSum)
 {
     using matrix_type = typename TestFixture::matrix_type;
     using real_type = typename TestFixture::real_type;
 
     gko::kernels::reference::mc64::initialize_weights(
-        this->ref, this->mtx.get(), this->tmp);
+        this->ref, this->mtx.get(), this->tmp,
+        gko::reorder::reordering_strategy::max_diagonal_sum);
 
-    GKO_ASSERT_ARRAY_EQ(this->tmp, this->expected_workspace);
+    GKO_ASSERT_ARRAY_EQ(this->tmp, this->expected_workspace_sum);
 }
 
 
-TYPED_TEST(Mc64, InitialMatchingExample)
+TYPED_TEST(Mc64, InitializeWeightsExampleProduct)
+{
+    using matrix_type = typename TestFixture::matrix_type;
+    using real_type = typename TestFixture::real_type;
+
+    gko::kernels::reference::mc64::initialize_weights(
+        this->ref, this->mtx.get(), this->tmp,
+        gko::reorder::reordering_strategy::max_diagonal_product);
+
+    GKO_ASSERT_EQ(this->tmp.get_num_elems(),
+                  this->expected_workspace_product.get_num_elems());
+    for (gko::size_type i = 0; i < this->tmp.get_num_elems(); i++) {
+        GKO_ASSERT_NEAR(this->tmp.get_data()[i],
+                        this->expected_workspace_product.get_data()[i],
+                        this->tolerance);
+    }
+}
+
+
+TYPED_TEST(Mc64, InitialMatchingExampleSum)
 {
     using index_type = typename TestFixture::index_type;
     gko::Array<index_type> p{this->ref,
@@ -112,8 +163,29 @@ TYPED_TEST(Mc64, InitialMatchingExample)
 
     gko::kernels::reference::mc64::initial_matching(
         this->ref, this->mtx->get_size()[0], this->mtx->get_const_row_ptrs(),
-        this->mtx->get_const_col_idxs(), this->expected_workspace, p, ip,
+        this->mtx->get_const_col_idxs(), this->expected_workspace_sum, p, ip,
         unmatched_rows);
+
+    GKO_ASSERT_ARRAY_EQ(p, this->expected_perm);
+    GKO_ASSERT_ARRAY_EQ(ip, this->expected_inv_perm);
+    GKO_ASSERT_EQ(unmatched_rows.size(), 1u);
+    GKO_ASSERT_EQ(unmatched_rows.front(), 4 * gko::one<index_type>());
+}
+
+
+TYPED_TEST(Mc64, InitialMatchingExampleProduct)
+{
+    using index_type = typename TestFixture::index_type;
+    gko::Array<index_type> p{this->ref,
+                             I<index_type>({-1, -1, -1, -1, -1, -1})};
+    gko::Array<index_type> ip{this->ref,
+                              I<index_type>({-1, -1, -1, -1, -1, -1})};
+    std::list<index_type> unmatched_rows{};
+
+    gko::kernels::reference::mc64::initial_matching(
+        this->ref, this->mtx->get_size()[0], this->mtx->get_const_row_ptrs(),
+        this->mtx->get_const_col_idxs(), this->expected_workspace_product, p,
+        ip, unmatched_rows);
 
     GKO_ASSERT_ARRAY_EQ(p, this->expected_perm);
     GKO_ASSERT_ARRAY_EQ(ip, this->expected_inv_perm);
@@ -137,7 +209,7 @@ TYPED_TEST(Mc64, ShortestAugmentingPathExample)
 
     gko::kernels::reference::mc64::shortest_augmenting_path(
         this->ref, this->mtx->get_size()[0], this->mtx->get_const_row_ptrs(),
-        this->mtx->get_const_col_idxs(), this->expected_workspace,
+        this->mtx->get_const_col_idxs(), this->expected_workspace_sum,
         this->expected_perm, this->expected_inv_perm,
         4 * gko::one<index_type>(), parents);
 
@@ -197,7 +269,9 @@ TYPED_TEST(Mc64, CreatesCorrectPermutationAndScalingExample)
     using value_type = typename TestFixture::value_type;
 
     auto mc64_factory =
-        gko::reorder::Mc64<value_type, index_type>::build().on(this->ref);
+        gko::reorder::Mc64<value_type, index_type>::build()
+            .with_strategy(gko::reorder::reordering_strategy::max_diagonal_sum)
+            .on(this->ref);
     auto mc64 = mc64_factory->generate(this->mtx);
 
     auto perm = mc64->get_permutation()->get_const_permutation();

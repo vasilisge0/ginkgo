@@ -60,6 +60,9 @@ namespace gko {
 namespace reorder {
 
 
+enum class reordering_strategy { max_diagonal_product, max_diagonal_sum };
+
+
 template <typename ValueType = default_precision, typename IndexType = int32>
 class Mc64 : public EnablePolymorphicObject<Mc64<ValueType, IndexType>,
                                             ReorderingBase>,
@@ -72,7 +75,6 @@ public:
     using value_type = ValueType;
     using index_type = IndexType;
 
-    enum class reordering_strategy { max_diagonal_product, max_diagonal_sum };
 
     /**
      * Gets the permutation (permutation matrix, output of the algorithm) of the

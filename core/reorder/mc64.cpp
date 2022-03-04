@@ -61,6 +61,7 @@ GKO_REGISTER_OPERATION(initialize_weights, mc64::initialize_weights);
 GKO_REGISTER_OPERATION(initial_matching, mc64::initial_matching);
 GKO_REGISTER_OPERATION(shortest_augmenting_path,
                        mc64::shortest_augmenting_path);
+GKO_REGISTER_OPERATION(compute_scaling, mc64::compute_scaling);
 
 
 }  // anonymous namespace
@@ -83,7 +84,8 @@ void Mc64<ValueType, IndexType>::generate(
     const auto row_ptrs = mtx->get_const_row_ptrs();
     const auto col_idxs = mtx->get_const_col_idxs();
 
-    exec->run(mc64::make_initialize_weights(mtx.get(), workspace));
+    exec->run(mc64::make_initialize_weights(mtx.get(), workspace,
+                                            parameters_.strategy));
 
     std::list<IndexType> unmatched_rows{};
     exec->run(mc64::make_initial_matching(num_rows, row_ptrs, col_idxs,
@@ -105,6 +107,14 @@ void Mc64<ValueType, IndexType>::generate(
                                         inv_permutation,
                                         matrix::column_permute))
             .get());
+
+    exec->run(
+        mc64::make_compute_scaling(mtx.get(), workspace, parameters_.strategy));
+
+    const auto nnz = mtx->get_num_stored_elements();
+    auto weights = workspace.get_data();
+    auto col_scaling_coefficients = weights + nnz;
+    auto row_scaling_coefficients = col_scaling_coefficients + num_rows;
 }
 
 

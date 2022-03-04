@@ -52,7 +52,8 @@ namespace mc64 {
 template <typename ValueType, typename IndexType>
 void initialize_weights(std::shared_ptr<const DefaultExecutor> exec,
                         const matrix::Csr<ValueType, IndexType>* mtx,
-                        Array<remove_complex<ValueType>>& workspace)
+                        Array<remove_complex<ValueType>>& workspace,
+                        gko::reorder::reordering_strategy strategy)
     GKO_NOT_IMPLEMENTED;
 
 GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
@@ -83,6 +84,17 @@ void shortest_augmenting_path(std::shared_ptr<const DefaultExecutor> exec,
 
 GKO_INSTANTIATE_FOR_EACH_NON_COMPLEX_VALUE_AND_INDEX_TYPE(
     GKO_DECLARE_MC64_SHORTEST_AUGMENTING_PATH_KERNEL);
+
+
+template <typename ValueType, typename IndexType>
+void compute_scaling(std::shared_ptr<const DefaultExecutor> exec,
+                     const matrix::Csr<ValueType, IndexType>* mtx,
+                     Array<remove_complex<ValueType>>& workspace,
+                     gko::reorder::reordering_strategy strategy)
+    GKO_NOT_IMPLEMENTED;
+
+GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
+    GKO_DECLARE_MC64_COMPUTE_SCALING_KERNEL);
 
 
 }  // namespace mc64
