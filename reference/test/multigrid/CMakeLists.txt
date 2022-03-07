@@ -1,2 +1,2 @@
 ginkgo_create_test(amgx_pgm_kernels)
-ginkgo_create_test(selection_kernels)
+ginkgo_create_test(uniform_coarsening_kernels)
