@@ -255,10 +255,10 @@ TEST_F(CbGmres, OmpCbGmresInitialize1IsEquivalentToRef)
 {
     initialize_data();
 
-    gko::kernels::reference::cb_gmres::initialize_1(
+    gko::kernels::reference::cb_gmres::initialize(
         ref, b.get(), residual.get(), givens_sin.get(), givens_cos.get(),
         stop_status.get(), default_krylov_dim_mixed);
-    gko::kernels::omp::cb_gmres::initialize_1(
+    gko::kernels::omp::cb_gmres::initialize(
         omp, d_b.get(), d_residual.get(), d_givens_sin.get(),
         d_givens_cos.get(), d_stop_status.get(), default_krylov_dim_mixed);
 
@@ -272,12 +272,12 @@ TEST_F(CbGmres, OmpCbGmresInitialize2IsEquivalentToRef)
 {
     initialize_data();
 
-    gko::kernels::reference::cb_gmres::initialize_2(
+    gko::kernels::reference::cb_gmres::restart(
         ref, residual.get(), residual_norm.get(),
         residual_norm_collection.get(), arnoldi_norm.get(),
         range_helper.get_range(), next_krylov_basis.get(),
         final_iter_nums.get(), default_krylov_dim_mixed);
-    gko::kernels::omp::cb_gmres::initialize_2(
+    gko::kernels::omp::cb_gmres::restart(
         omp, d_residual.get(), d_residual_norm.get(),
         d_residual_norm_collection.get(), d_arnoldi_norm.get(),
         d_range_helper.get_range(), d_next_krylov_basis.get(),
@@ -296,13 +296,13 @@ TEST_F(CbGmres, OmpCbGmresStep1IsEquivalentToRef)
     initialize_data();
     int iter = 5;
 
-    gko::kernels::reference::cb_gmres::step_1(
+    gko::kernels::reference::cb_gmres::arnoldi(
         ref, next_krylov_basis.get(), givens_sin.get(), givens_cos.get(),
         residual_norm.get(), residual_norm_collection.get(),
         range_helper.get_range(), hessenberg_iter.get(), buffer_iter.get(),
         arnoldi_norm.get(), iter, final_iter_nums.get(), stop_status.get(),
         reorth_status.get(), num_reorth.get());
-    gko::kernels::omp::cb_gmres::step_1(
+    gko::kernels::omp::cb_gmres::arnoldi(
         omp, d_next_krylov_basis.get(), d_givens_sin.get(), d_givens_cos.get(),
         d_residual_norm.get(), d_residual_norm_collection.get(),
         d_range_helper.get_range(), d_hessenberg_iter.get(),
@@ -326,11 +326,11 @@ TEST_F(CbGmres, OmpCbGmresStep2IsEquivalentToRef)
 {
     initialize_data();
 
-    gko::kernels::reference::cb_gmres::step_2(
+    gko::kernels::reference::cb_gmres::solve_krylov(
         ref, residual_norm_collection.get(),
         range_helper.get_range().get_accessor().to_const(), hessenberg.get(),
         y.get(), before_preconditioner.get(), final_iter_nums.get());
-    gko::kernels::omp::cb_gmres::step_2(
+    gko::kernels::omp::cb_gmres::solve_krylov(
         omp, d_residual_norm_collection.get(),
         d_range_helper.get_range().get_accessor().to_const(),
         d_hessenberg.get(), d_y.get(), d_before_preconditioner.get(),
