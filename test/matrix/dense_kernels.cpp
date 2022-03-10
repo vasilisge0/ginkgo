@@ -1004,7 +1004,7 @@ TEST_F(Dense, ComputeNorm1IsEquivalentToRef)
 
     auto norm_size = gko::dim<2>{1, x->get_size()[1]};
     auto norm_expected = NormVector::create(ref, norm_size);
-    auto dnorm = NormVector::create(ref, norm_size);
+    auto dnorm = NormVector::create(exec, norm_size);
 
     x->compute_norm1(norm_expected.get());
     dx->compute_norm1(dnorm.get());
@@ -1144,6 +1144,37 @@ TEST_F(Dense, AddScaledIdentityToNonSquareOnDifferentExecutor)
     dx->add_scaled_identity(alpha.get(), beta.get());
 
     GKO_ASSERT_MTX_NEAR(x, dx, r<vtype>::value);
+}
+
+
+TEST_F(Dense, ComputeNorm2SquaredIsEquivalentToRef)
+{
+    set_up_apply_data();
+    auto norm_size = gko::dim<2>{1, x->get_size()[1]};
+    auto norm_expected = NormVector::create(ref, norm_size);
+    auto dnorm = NormVector::create(exec, norm_size);
+
+    gko::kernels::reference::dense::compute_squared_norm2(ref, x.get(),
+                                                      norm_expected.get());
+    gko::kernels::EXEC_NAMESPACE::dense::compute_squared_norm2(exec, dx.get(),
+                                                           dnorm.get());
+
+    GKO_ASSERT_MTX_NEAR(dnorm, norm_expected, r<vtype>::value);
+}
+
+
+TEST_F(Dense, ComputesSqrt)
+{
+    auto mtx = gko::test::generate_random_matrix<NormVector>(
+        1, 7, std::uniform_int_distribution<int>(7, 7),
+        std::uniform_real_distribution<gko::remove_complex<vtype>>(0, 10),
+        rand_engine, ref);
+    auto dmtx = gko::clone(exec, mtx);
+
+    gko::kernels::reference::dense::compute_sqrt(ref, mtx.get());
+    gko::kernels::EXEC_NAMESPACE::dense::compute_sqrt(exec, dmtx.get());
+
+    GKO_ASSERT_MTX_NEAR(mtx, dmtx, r<vtype>::value);
 }
 
 
