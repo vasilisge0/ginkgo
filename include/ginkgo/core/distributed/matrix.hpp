@@ -106,7 +106,8 @@ public:
      */
     void read_distributed(
         const device_matrix_data<value_type, global_index_type>& data,
-        const Partition<local_index_type, global_index_type>* partition);
+        const Partition<local_index_type, global_index_type>* partition,
+        bool neighbor_comm = false);
 
     /**
      * Reads a square matrix from the matrix_data structure and a global
@@ -119,7 +120,8 @@ public:
      */
     void read_distributed(
         const matrix_data<value_type, global_index_type>& data,
-        const Partition<local_index_type, global_index_type>* partition);
+        const Partition<local_index_type, global_index_type>* partition,
+        bool neighbor_comm = false);
 
     /**
      * Reads a matrix from the device_matrix_data structure, a global row
@@ -139,7 +141,8 @@ public:
     void read_distributed(
         const device_matrix_data<value_type, global_index_type>& data,
         const Partition<local_index_type, global_index_type>* row_partition,
-        const Partition<local_index_type, global_index_type>* col_partition);
+        const Partition<local_index_type, global_index_type>* col_partition,
+        bool neighbor_comm = false);
 
     /**
      * Reads a matrix from the matrix_data structure, a global row partition,
@@ -153,7 +156,8 @@ public:
     void read_distributed(
         const matrix_data<value_type, global_index_type>& data,
         const Partition<local_index_type, global_index_type>* row_partition,
-        const Partition<local_index_type, global_index_type>* col_partition);
+        const Partition<local_index_type, global_index_type>* col_partition,
+        bool neighbor_comm = false);
 
     /**
      * Get read access to the local diagonal matrix
@@ -219,6 +223,7 @@ private:
     ::gko::detail::DenseCache<value_type> recv_buffer_;
     std::shared_ptr<local_matrix_type> diag_mtx_;
     std::shared_ptr<local_matrix_type> offdiag_mtx_;
+    bool uses_neighbor_comm_;
 };
 
 

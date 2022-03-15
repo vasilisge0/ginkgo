@@ -132,7 +132,8 @@ protected:
                             r<value_type>::value);
     }
 
-    void init_large(gko::size_type num_rows, gko::size_type num_cols)
+    void init_large(gko::size_type num_rows, gko::size_type num_cols,
+                    bool neighbor_comm)
     {
         auto rank = this->comm.rank();
         int num_parts = this->comm.size();
@@ -165,7 +166,7 @@ protected:
                 build_from_mapping(this->ref, col_mapping, num_parts));
 
         dist_mat->read_distributed(mat_md, row_part_large.get(),
-                                   col_part_large.get());
+                                   col_part_large.get(), neighbor_comm);
         csr_mat->read(mat_md);
 
         x->read_distributed(vec_md, col_part_large.get());
@@ -269,28 +270,27 @@ TYPED_TEST(Matrix, CanApplyToSingleVector)
     auto y = TestFixture::dist_vec_type ::create(this->ref, this->comm);
     I<I<value_type>> result[3] = {{{10}, {18}}, {{28}, {67}}, {{59}}};
     auto rank = this->comm.rank();
-    dist_mat->read_distributed(this->mat_input, this->row_part.get(),
-                               this->col_part.get());
     x->read_distributed(vec_md, this->col_part.get());
     y->read_distributed(vec_md, this->row_part.get());
-    y->fill(gko::zero<value_type>());
 
-    dist_mat->apply(x.get(), y.get());
+    {
+        SCOPED_TRACE("Default topology");
+        dist_mat->read_distributed(this->mat_input, this->row_part.get(),
+                                   this->col_part.get());
+        y->fill(gko::zero<value_type>());
+        dist_mat->apply(x.get(), y.get());
 
-    GKO_ASSERT_MTX_NEAR(y->get_local_vector(), result[rank], 0);
-}
+        GKO_ASSERT_MTX_NEAR(y->get_local_vector(), result[rank], 0);
+    }
+    {
+        SCOPED_TRACE("Graph topology");
+        dist_mat->read_distributed(this->mat_input, this->row_part.get(),
+                                   this->col_part.get(), true);
+        y->fill(gko::zero<value_type>());
+        dist_mat->apply(x.get(), y.get());
 
-
-TYPED_TEST(Matrix, CanApplyToSingleVectorLarge)
-{
-    this->init_large(100, 1);
-
-    this->dist_mat->apply(this->x.get(), this->y.get());
-    this->csr_mat->apply(this->dense_x.get(), this->dense_y.get());
-
-    this->assert_local_vector_equal_to_global_vector(
-        this->y.get(), this->dense_y.get(), this->row_part_large.get(),
-        this->comm.rank());
+        GKO_ASSERT_MTX_NEAR(y->get_local_vector(), result[rank], 0);
+    }
 }
 
 
@@ -306,21 +306,33 @@ TYPED_TEST(Matrix, CanApplyToMultipleVectors)
     I<I<value_type>> result[3] = {
         {{10, 110}, {18, 198}}, {{28, 308}, {67, 737}}, {{59, 649}}};
     auto rank = this->comm.rank();
-    dist_mat->read_distributed(this->mat_input, this->row_part.get(),
-                               this->col_part.get());
     x->read_distributed(vec_md, this->col_part.get());
     y->read_distributed(vec_md, this->row_part.get());
-    y->fill(gko::zero<value_type>());
 
-    dist_mat->apply(x.get(), y.get());
+    {
+        SCOPED_TRACE("Default topology");
+        dist_mat->read_distributed(this->mat_input, this->row_part.get(),
+                                   this->col_part.get());
+        y->fill(gko::zero<value_type>());
+        dist_mat->apply(x.get(), y.get());
 
-    GKO_ASSERT_MTX_NEAR(y->get_local_vector(), result[rank], 0);
+        GKO_ASSERT_MTX_NEAR(y->get_local_vector(), result[rank], 0);
+    }
+    {
+        SCOPED_TRACE("Graph topology");
+        dist_mat->read_distributed(this->mat_input, this->row_part.get(),
+                                   this->col_part.get(), true);
+        y->fill(gko::zero<value_type>());
+        dist_mat->apply(x.get(), y.get());
+
+        GKO_ASSERT_MTX_NEAR(y->get_local_vector(), result[rank], 0);
+    }
 }
 
 
-TYPED_TEST(Matrix, CanApplyToMultipleVectorsLarge)
+TYPED_TEST(Matrix, CanApplyToSingleVectorLarge)
 {
-    this->init_large(100, 17);
+    this->init_large(100, 1, false);
 
     this->dist_mat->apply(this->x.get(), this->y.get());
     this->csr_mat->apply(this->dense_x.get(), this->dense_y.get());
@@ -330,6 +342,44 @@ TYPED_TEST(Matrix, CanApplyToMultipleVectorsLarge)
         this->comm.rank());
 }
 
+
+TYPED_TEST(Matrix, CanApplyToMultipleVectorsLarge)
+{
+    this->init_large(100, 17, false);
+
+    this->dist_mat->apply(this->x.get(), this->y.get());
+    this->csr_mat->apply(this->dense_x.get(), this->dense_y.get());
+
+    this->assert_local_vector_equal_to_global_vector(
+        this->y.get(), this->dense_y.get(), this->row_part_large.get(),
+        this->comm.rank());
+}
+
+
+TYPED_TEST(Matrix, CanApplyToSingleVectorLargeGraphComm)
+{
+    this->init_large(100, 1, true);
+
+    this->dist_mat->apply(this->x.get(), this->y.get());
+    this->csr_mat->apply(this->dense_x.get(), this->dense_y.get());
+
+    this->assert_local_vector_equal_to_global_vector(
+        this->y.get(), this->dense_y.get(), this->row_part_large.get(),
+        this->comm.rank());
+}
+
+
+TYPED_TEST(Matrix, CanApplyToMultipleVectorsLargeGraphComm)
+{
+    this->init_large(100, 17, true);
+
+    this->dist_mat->apply(this->x.get(), this->y.get());
+    this->csr_mat->apply(this->dense_x.get(), this->dense_y.get());
+
+    this->assert_local_vector_equal_to_global_vector(
+        this->y.get(), this->dense_y.get(), this->row_part_large.get(),
+        this->comm.rank());
+}
 
 TYPED_TEST(Matrix, CanConvertToNextPrecision)
 {

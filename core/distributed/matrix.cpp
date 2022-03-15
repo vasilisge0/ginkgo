@@ -67,7 +67,8 @@ Matrix<ValueType, LocalIndexType, GlobalIndexType>::Matrix(
       local_to_global_ghost_{exec},
       one_scalar_{},
       diag_mtx_{local_matrix_type::create(exec)},
-      offdiag_mtx_{local_matrix_type::create(exec)}
+      offdiag_mtx_{local_matrix_type::create(exec)},
+      uses_neighbor_comm_(false)
 {
     one_scalar_.init(exec, dim<2>{1, 1});
     initialize<local_vector_type>({one<value_type>()}, exec)
@@ -107,7 +108,8 @@ template <typename ValueType, typename LocalIndexType, typename GlobalIndexType>
 void Matrix<ValueType, LocalIndexType, GlobalIndexType>::read_distributed(
     const device_matrix_data<value_type, global_index_type>& data,
     const Partition<local_index_type, global_index_type>* row_partition,
-    const Partition<local_index_type, global_index_type>* col_partition)
+    const Partition<local_index_type, global_index_type>* col_partition,
+    bool neighbor_comm)
 {
     const auto comm = this->get_communicator();
     GKO_ASSERT_EQ(data.get_size()[0], row_partition->get_size());
@@ -166,6 +168,64 @@ void Matrix<ValueType, LocalIndexType, GlobalIndexType>::read_distributed(
     if (needs_host_buffer) {
         gather_idxs_.set_executor(exec);
     }
+
+    if (neighbor_comm) {
+        uses_neighbor_comm_ = true;
+        // define only outgoing edges:
+        auto source = comm.rank();
+        // compute degree for own rank
+        auto degree = static_cast<comm_index_type>(
+            std::count_if(send_sizes_.begin(), send_sizes_.end(),
+                          [](const auto v) { return v > 0; }));
+        // destinations are ranks where send_size > 0
+        std::vector<comm_index_type> destinations;
+        for (int r = 0; r < send_sizes_.size(); ++r) {
+            if (send_sizes_[r] > 0) {
+                destinations.push_back(r);
+            }
+        }
+
+        MPI_Comm graph;
+        MPI_Dist_graph_create(comm.get(), 1, &source, &degree,
+                              destinations.data(), MPI_UNWEIGHTED,
+                              MPI_INFO_NULL, false, &graph);
+
+        comm_index_type num_in_neighbors;
+        comm_index_type num_out_neighbors;
+        int weighted;
+        MPI_Dist_graph_neighbors_count(graph, &num_in_neighbors,
+                                       &num_out_neighbors, &weighted);
+
+        std::vector<comm_index_type> out_neighbors(num_out_neighbors);
+        std::vector<comm_index_type> in_neighbors(num_in_neighbors);
+        MPI_Dist_graph_neighbors(graph, num_in_neighbors, in_neighbors.data(),
+                                 MPI_UNWEIGHTED, num_out_neighbors,
+                                 out_neighbors.data(), MPI_UNWEIGHTED);
+
+        this->set_commuinicator(graph);
+
+        // compress communication info
+        std::vector<comm_index_type> comp_send_offsets(num_out_neighbors + 1);
+        std::vector<comm_index_type> comp_send_sizes(num_out_neighbors);
+        std::vector<comm_index_type> comp_recv_offsets(num_in_neighbors + 1);
+        std::vector<comm_index_type> comp_recv_sizes(num_in_neighbors);
+
+        for (size_type i = 0; i < out_neighbors.size(); ++i) {
+            comp_send_sizes[i] = send_sizes_[out_neighbors[i]];
+            comp_send_offsets[i] = send_offsets_[out_neighbors[i]];
+        }
+        for (size_type i = 0; i < in_neighbors.size(); ++i) {
+            comp_recv_sizes[i] = recv_sizes_[in_neighbors[i]];
+            comp_recv_offsets[i] = recv_offsets_[in_neighbors[i]];
+        }
+        comp_send_offsets.back() = send_offsets_.back();
+        comp_recv_offsets.back() = recv_offsets_.back();
+
+        recv_sizes_ = std::move(comp_recv_sizes);
+        recv_offsets_ = std::move(comp_recv_offsets);
+        send_sizes_ = std::move(comp_send_sizes);
+        send_offsets_ = std::move(comp_send_offsets);
+    }
 }
 
 
@@ -173,33 +233,36 @@ template <typename ValueType, typename LocalIndexType, typename GlobalIndexType>
 void Matrix<ValueType, LocalIndexType, GlobalIndexType>::read_distributed(
     const matrix_data<value_type, global_index_type>& data,
     const Partition<local_index_type, global_index_type>* row_partition,
-    const Partition<local_index_type, global_index_type>* col_partition)
+    const Partition<local_index_type, global_index_type>* col_partition,
+    bool neighbor_comm)
 {
     this->read_distributed(
         device_matrix_data<value_type, global_index_type>::create_from_host(
             this->get_executor(), data),
-        row_partition, col_partition);
+        row_partition, col_partition, neighbor_comm);
 }
 
 
 template <typename ValueType, typename LocalIndexType, typename GlobalIndexType>
 void Matrix<ValueType, LocalIndexType, GlobalIndexType>::read_distributed(
     const matrix_data<ValueType, global_index_type>& data,
-    const Partition<local_index_type, global_index_type>* partition)
+    const Partition<local_index_type, global_index_type>* partition,
+    bool neighbor_comm)
 {
     this->read_distributed(
         device_matrix_data<value_type, global_index_type>::create_from_host(
             this->get_executor(), data),
-        partition, partition);
+        partition, partition, neighbor_comm);
 }
 
 
 template <typename ValueType, typename LocalIndexType, typename GlobalIndexType>
 void Matrix<ValueType, LocalIndexType, GlobalIndexType>::read_distributed(
     const device_matrix_data<ValueType, GlobalIndexType>& data,
-    const Partition<local_index_type, global_index_type>* partition)
+    const Partition<local_index_type, global_index_type>* partition,
+    bool neighbor_comm)
 {
-    this->read_distributed(data, partition, partition);
+    this->read_distributed(data, partition, partition, neighbor_comm);
 }
 
 
@@ -227,15 +290,31 @@ mpi::request Matrix<ValueType, LocalIndexType, GlobalIndexType>::communicate(
     if (needs_host_buffer) {
         host_send_buffer_->copy_from(send_buffer_.get());
 
-        return comm.i_all_to_all_v(
-            host_send_buffer_->get_const_values(), send_sizes_.data(),
-            send_offsets_.data(), type.get(), host_recv_buffer_->get_values(),
-            recv_sizes_.data(), recv_offsets_.data(), type.get());
+        if (uses_neighbor_comm_) {
+            return comm.i_neighor_all_to_all_v(
+                host_send_buffer_->get_const_values(), send_sizes_.data(),
+                send_offsets_.data(), type.get(),
+                host_recv_buffer_->get_values(), recv_sizes_.data(),
+                recv_offsets_.data(), type.get());
+        } else {
+            return comm.i_all_to_all_v(
+                host_send_buffer_->get_const_values(), send_sizes_.data(),
+                send_offsets_.data(), type.get(),
+                host_recv_buffer_->get_values(), recv_sizes_.data(),
+                recv_offsets_.data(), type.get());
+        }
     } else {
-        return comm.i_all_to_all_v(
-            send_buffer_->get_const_values(), send_sizes_.data(),
-            send_offsets_.data(), type.get(), recv_buffer_->get_values(),
-            recv_sizes_.data(), recv_offsets_.data(), type.get());
+        if (uses_neighbor_comm_) {
+            return comm.i_neighor_all_to_all_v(
+                send_buffer_->get_const_values(), send_sizes_.data(),
+                send_offsets_.data(), type.get(), recv_buffer_->get_values(),
+                recv_sizes_.data(), recv_offsets_.data(), type.get());
+        } else {
+            return comm.i_all_to_all_v(
+                send_buffer_->get_const_values(), send_sizes_.data(),
+                send_offsets_.data(), type.get(), recv_buffer_->get_values(),
+                recv_sizes_.data(), recv_offsets_.data(), type.get());
+        }
     }
 }
 
