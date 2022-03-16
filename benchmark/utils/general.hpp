@@ -310,6 +310,26 @@ const std::map<std::string, std::function<std::shared_ptr<gko::Executor>()>>
          }}};
 
 
+#if GINKGO_BUILD_MPI
+void set_mpi_device_id(gko::mpi::communicator comm)
+{
+    if (gko::CudaExecutor::get_num_devices() > 0) {
+        FLAGS_device_id =
+            comm.node_local_rank() % gko::CudaExecutor::get_num_devices();
+    } else if (gko::HipExecutor::get_num_devices() > 0) {
+        FLAGS_device_id =
+            comm.node_local_rank() % gko::HipExecutor::get_num_devices();
+    } else if (gko::DpcppExecutor::get_num_devices("gpu")) {
+        FLAGS_device_id =
+            comm.node_local_rank() % gko::DpcppExecutor::get_num_devices("gpu");
+    } else if (gko::DpcppExecutor::get_num_devices("cpu")) {
+        FLAGS_device_id =
+            comm.node_local_rank() % gko::DpcppExecutor::get_num_devices("cpu");
+    }
+}
+#endif
+
+
 // returns the appropriate executor, as set by the executor flag
 std::shared_ptr<gko::Executor> get_executor()
 {
