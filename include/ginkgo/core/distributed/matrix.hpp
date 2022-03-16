@@ -185,6 +185,8 @@ public:
 
     Matrix& operator=(Matrix&& other) noexcept;
 
+    void use_neighbor_comm();
+
 protected:
     /**
      * Creates an empty distributed matrix.
