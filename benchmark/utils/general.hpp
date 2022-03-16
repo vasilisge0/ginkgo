@@ -311,22 +311,43 @@ const std::map<std::string, std::function<std::shared_ptr<gko::Executor>()>>
 
 
 #if GINKGO_BUILD_MPI
-void set_mpi_device_id(gko::mpi::communicator comm)
-{
-    if (gko::CudaExecutor::get_num_devices() > 0) {
-        FLAGS_device_id =
-            comm.node_local_rank() % gko::CudaExecutor::get_num_devices();
-    } else if (gko::HipExecutor::get_num_devices() > 0) {
-        FLAGS_device_id =
-            comm.node_local_rank() % gko::HipExecutor::get_num_devices();
-    } else if (gko::DpcppExecutor::get_num_devices("gpu")) {
-        FLAGS_device_id =
-            comm.node_local_rank() % gko::DpcppExecutor::get_num_devices("gpu");
-    } else if (gko::DpcppExecutor::get_num_devices("cpu")) {
-        FLAGS_device_id =
-            comm.node_local_rank() % gko::DpcppExecutor::get_num_devices("cpu");
-    }
-}
+
+const std::map<std::string, std::function<std::shared_ptr<gko::Executor>(
+                                gko::mpi::communicator)>>
+    executor_factory_mpi{
+        {"reference",
+         [](gko::mpi::communicator) {
+             return gko::ReferenceExecutor::create();
+         }},
+        {"omp",
+         [](gko::mpi::communicator) { return gko::OmpExecutor::create(); }},
+        {"cuda",
+         [](gko::mpi::communicator comm) {
+             FLAGS_device_id =
+                 comm.node_local_rank() % gko::CudaExecutor::get_num_devices();
+             return gko::CudaExecutor::create(FLAGS_device_id,
+                                              gko::OmpExecutor::create(), true);
+         }},
+        {"hip",
+         [](gko::mpi::communicator comm) {
+             FLAGS_device_id =
+                 comm.node_local_rank() % gko::HipExecutor::get_num_devices();
+             return gko::HipExecutor::create(FLAGS_device_id,
+                                             gko::OmpExecutor::create(), true);
+         }},
+        {"dpcpp", [](gko::mpi::communicator comm) {
+             if (gko::DpcppExecutor::get_num_devices("gpu")) {
+                 FLAGS_device_id = comm.node_local_rank() %
+                                   gko::DpcppExecutor::get_num_devices("gpu");
+             } else if (gko::DpcppExecutor::get_num_devices("cpu")) {
+                 FLAGS_device_id = comm.node_local_rank() %
+                                   gko::DpcppExecutor::get_num_devices("cpu");
+             } else {
+                 GKO_NOT_IMPLEMENTED;
+             }
+             return gko::DpcppExecutor::create(FLAGS_device_id,
+                                               gko::OmpExecutor::create());
+         }}};
 #endif
 
 

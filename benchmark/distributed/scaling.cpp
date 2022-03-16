@@ -30,18 +30,13 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ******************************<GINKGO LICENSE>*******************************/
 
-// @sect3{Include files}
 
-// This is the main ginkgo header file.
 #include <ginkgo/ginkgo.hpp>
 
-#include <chrono>
 #include <iostream>
-#include <map>
 #include <string>
 
 #include "benchmark/utils/general.hpp"
-#include "benchmark/utils/loggers.hpp"
 #include "benchmark/utils/timer.hpp"
 #include "benchmark/utils/types.hpp"
 
@@ -61,7 +56,7 @@ DEFINE_bool(graph_comm, false,
 /**
  * Generates matrix data for a 2D stencil matrix. If restricted is set to true,
  * creates a 5-pt stencil, if it is false creates a 9-pt stencil. If
- * strong_scaling is set to true, creates the same problemsize independent of
+ * strong_scaling is set to true, creates the same problem size independent of
  * the number of ranks, if it false the problem size grows with the number of
  * ranks.
  */
@@ -98,7 +93,7 @@ gko::matrix_data<ValueType, IndexType> generate_2d_stencil(
 /**
  * Generates matrix data for a 3D stencil matrix. If restricted is set to true,
  * creates a 7-pt stencil, if it is false creates a 27-pt stencil. If
- * strong_scaling is set to true, creates the same problemsize independent of
+ * strong_scaling is set to true, creates the same problem size independent of
  * the number of ranks, if it false the problem size grows with the number of
  * ranks.
  */
@@ -164,8 +159,7 @@ int main(int argc, char* argv[])
         print_general_information(extra_information);
     }
 
-    set_mpi_device_id(comm);
-    auto exec = executor_factory.at(FLAGS_executor)();
+    auto exec = executor_factory_mpi.at(FLAGS_executor)(comm);
 
     const auto num_rows = FLAGS_rows;
     const auto dim = FLAGS_dim;
@@ -195,8 +189,11 @@ int main(int argc, char* argv[])
     // Build global matrix from local matrix data.
     auto h_A = dist_mtx::create(exec->get_master(), comm);
     auto A = dist_mtx::create(exec, comm);
-    h_A->read_distributed(A_data, part.get(), part.get(), graph_commm);
+    h_A->read_distributed(A_data, part.get(), part.get());
     A->copy_from(h_A.get());
+    if (graph_commm) {
+        A->use_neighbor_comm();
+    }
 
     // Set up global vectors for the distributed SpMV
     if (rank == 0) {
@@ -219,7 +216,7 @@ int main(int argc, char* argv[])
     if (rank == 0) {
         std::cout << "Warming up..." << std::endl;
     }
-    for (auto _ : {0, 1}) {
+    for (auto _ : ic.warmup_run()) {
         A->apply(lend(x), lend(b));
     }
 
@@ -227,8 +224,7 @@ int main(int argc, char* argv[])
     if (rank == 0) {
         std::cout << "Running benchmark..." << std::endl;
     }
-    auto num_reps = std::stoi(FLAGS_repetitions);
-    for (int i = 0; i < num_reps; ++i) {
+    for (auto _ : ic.run()) {
         A->apply(lend(x), lend(b));
     }
     if (rank == 0) {
