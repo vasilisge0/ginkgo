@@ -33,7 +33,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <ginkgo/ginkgo.hpp>
 
+#include <stdlib.h>
 #include <iostream>
+#include <set>
 #include <string>
 
 #include "benchmark/utils/general.hpp"
@@ -41,14 +43,13 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "benchmark/utils/types.hpp"
 
 
-DEFINE_int64(rows, 100,
-             "Number of rows, either in total (strong_scaling == true) or per "
-             "process (strong_scaling == false).");
+DEFINE_int64(
+    target_rows, 100,
+    "Target number of rows, either in total (strong_scaling == true) or per "
+    "process (strong_scaling == false).");
 DEFINE_int32(dim, 2, "Dimension of stencil, either 2D or 3D");
 DEFINE_bool(restrict, false,
             "If true creates 5/7pt stencil, if false creates 9/27pt stencil.");
-DEFINE_bool(strong_scaling, false,
-            "If true benchmarks strong scaling, otherwise weak scaling.");
 DEFINE_bool(graph_comm, false,
             "If true, the matrix will use neighborhood communication.");
 
@@ -62,24 +63,41 @@ DEFINE_bool(graph_comm, false,
  */
 template <typename ValueType, typename IndexType>
 gko::matrix_data<ValueType, IndexType> generate_2d_stencil(
-    const gko::size_type global_size, const IndexType local_rows_start,
-    const IndexType local_rows_end, bool restricted)
+    gko::mpi::communicator comm, const gko::size_type target_local_size,
+    bool restricted)
 {
+    std::array<int, 2> dims{};
+    std::array<int, 2> periods{};
+    MPI_Dims_create(comm.size(), dims.size(), dims.data());
+
+    MPI_Comm cart_comm;
+    MPI_Cart_create(comm.get(), dims.size(), dims.data(), periods.data(), 0,
+                    &cart_comm);
+
+    std::array<int, 2> coords{};
+    MPI_Cart_coords(cart_comm, comm.rank(), coords.size(), coords.data());
+
     const auto dp =
-        static_cast<IndexType>(std::ceil(std::pow(global_size, 1. / 2.)));
+        static_cast<IndexType>(std::ceil(std::pow(target_local_size, 1. / 2.)));
+    const auto global_size = dp * dp * comm.size();
     auto A_data = gko::matrix_data<ValueType, IndexType>(
         gko::dim<2>{global_size, global_size});
 
-    for (IndexType row = local_rows_start; row < local_rows_end; row++) {
-        auto i = row / dp;
-        auto j = row % dp;
-        for (IndexType d_i : {-1, 0, 1}) {
-            for (IndexType d_j : {-1, 0, 1}) {
-                if (!restricted || (d_i == 0 || d_j == 0)) {
-                    auto col = j + d_j + (i + d_i) * dp;
-                    if (col >= 0 && col < global_size) {
-                        A_data.nonzeros.emplace_back(row, col,
-                                                     gko::one<ValueType>());
+    auto flat_idx = [&](const auto ix, auto iy) {
+        return ix + (coords[0] * dp) + (iy + coords[1] * dp) * dims[0] * dp;
+    };
+
+    for (IndexType i = 0; i < dp; ++i) {
+        for (IndexType j = 0; j < dp; ++j) {
+            auto row = flat_idx(j, i);
+            for (IndexType d_i : {-1, 0, 1}) {
+                for (IndexType d_j : {-1, 0, 1}) {
+                    if (!restricted || ((d_i == 0 && d_j == 0))) {
+                        auto col = flat_idx(j + d_j, i + d_i);
+                        if (col >= 0 && col < global_size) {
+                            A_data.nonzeros.emplace_back(row, col,
+                                                         gko::one<ValueType>());
+                        }
                     }
                 }
             }
@@ -99,29 +117,47 @@ gko::matrix_data<ValueType, IndexType> generate_2d_stencil(
  */
 template <typename ValueType, typename IndexType>
 gko::matrix_data<ValueType, IndexType> generate_3d_stencil(
-    const gko::size_type global_size, const IndexType local_rows_start,
-    const IndexType local_rows_end, bool restricted)
+    gko::mpi::communicator comm, const gko::size_type target_local_size,
+    bool restricted)
 {
+    std::array<int, 3> dims{};
+    std::array<int, 3> periods{};
+    MPI_Dims_create(comm.size(), dims.size(), dims.data());
+
+    MPI_Comm cart_comm;
+    MPI_Cart_create(comm.get(), dims.size(), dims.data(), periods.data(), 0,
+                    &cart_comm);
+
+    std::array<int, 3> coords{};
+    MPI_Cart_coords(cart_comm, comm.rank(), coords.size(), coords.data());
+
     const auto dp =
-        static_cast<IndexType>(std::ceil(std::pow(global_size, 1. / 2.)));
+        static_cast<IndexType>(std::ceil(std::pow(target_local_size, 1. / 3.)));
+    const auto global_size = dp * dp * dp * comm.size();
     auto A_data = gko::matrix_data<ValueType, IndexType>(
         gko::dim<2>{global_size, global_size});
 
-    for (IndexType row = local_rows_start; row < local_rows_end; row++) {
-        auto i = row / (dp * dp);
-        auto j = (row % (dp * dp)) / dp;
-        auto k = row % dp;
-        for (IndexType d_i : {-1, 0, 1}) {
-            for (IndexType d_j : {-1, 0, 1}) {
-                for (IndexType d_k : {-1, 0, 1}) {
-                    if (!restricted ||
-                        ((d_i == 0 && d_j == 0) || (d_i == 0 && d_k == 0) ||
-                         (d_j == 0 && d_k == 0))) {
-                        auto col =
-                            k + d_k + (j + d_j) * dp + (i + d_i) * dp * dp;
-                        if (col >= 0 && col < global_size) {
-                            A_data.nonzeros.emplace_back(row, col,
-                                                         gko::one<ValueType>());
+    auto flat_idx = [&](const auto ix, auto iy, auto iz) {
+        return ix + (coords[0] * dp) + (iy + coords[1] * dp) * dims[0] * dp +
+               (iz + coords[2] * dp) * dims[0] * dims[1] * dp * dp;
+    };
+
+    for (IndexType i = 0; i < dp; ++i) {
+        for (IndexType j = 0; j < dp; ++j) {
+            for (IndexType k = 0; k < dp; ++k) {
+                auto row = flat_idx(k, j, i);
+                for (IndexType d_i : {-1, 0, 1}) {
+                    for (IndexType d_j : {-1, 0, 1}) {
+                        for (IndexType d_k : {-1, 0, 1}) {
+                            if (!restricted || ((d_i == 0 && d_j == 0) ||
+                                                (d_i == 0 && d_k == 0) ||
+                                                (d_j == 0 && d_k == 0))) {
+                                auto col = flat_idx(k + d_k, j + d_j, i + d_i);
+                                if (col >= 0 && col < global_size) {
+                                    A_data.nonzeros.emplace_back(
+                                        row, col, gko::one<ValueType>());
+                                }
+                            }
                         }
                     }
                 }
@@ -130,6 +166,40 @@ gko::matrix_data<ValueType, IndexType> generate_3d_stencil(
     }
 
     return A_data;
+}
+
+
+template <typename LocalIndexType, typename GlobalIndexType, typename ValueType>
+std::unique_ptr<gko::distributed::Partition<LocalIndexType, GlobalIndexType>>
+build_part_from_local_rows(
+    std::shared_ptr<const gko::Executor> exec, gko::mpi::communicator comm,
+    const gko::matrix_data<ValueType, GlobalIndexType>& data)
+{
+    std::set<GlobalIndexType> global_rows;
+    for (const auto& entry : data.nonzeros) {
+        global_rows.emplace(entry.row);
+    }
+
+    auto local_size = global_rows.size();
+    auto global_size = local_size * comm.size();
+
+    std::vector<GlobalIndexType> local_mapping(global_rows.begin(),
+                                               global_rows.end());
+    std::vector<GlobalIndexType> all_global_rows(global_size);
+    comm.all_gather(local_mapping.data(), local_size, all_global_rows.data(),
+                    local_size);
+
+    gko::Array<gko::distributed::comm_index_type> mapping{exec->get_master(),
+                                                          global_size};
+    for (std::size_t i = 0; i < global_size; ++i) {
+        auto row = all_global_rows[i];
+        auto part = i / local_size;
+        mapping.get_data()[row] = part;
+    }
+
+    return gko::distributed::Partition<
+        LocalIndexType, GlobalIndexType>::build_from_mapping(exec, mapping,
+                                                             comm.size());
 }
 
 
@@ -161,30 +231,22 @@ int main(int argc, char* argv[])
 
     auto exec = executor_factory_mpi.at(FLAGS_executor)(comm);
 
-    const auto num_rows = FLAGS_rows;
+    const auto num_target_rows = FLAGS_target_rows;
     const auto dim = FLAGS_dim;
     const bool restricted = FLAGS_restrict;
-    const bool strong_scaling = FLAGS_strong_scaling;
     const bool graph_commm = FLAGS_graph_comm;
 
     // Generate matrix data on each rank
     if (rank == 0) {
         std::cout << "Generating stencil matrix..." << std::endl;
     }
-    auto global_size = static_cast<gko::size_type>(
-        strong_scaling ? num_rows : num_rows * comm.size());
-    auto part = gko::distributed::Partition<LocalIndexType, GlobalIndexType>::
-        build_from_global_size_uniform(
-            exec->get_master(), comm.size(),
-            static_cast<GlobalIndexType>(global_size));
-
-    auto A_data =
-        dim == 2 ? generate_2d_stencil<ValueType, GlobalIndexType>(
-                       global_size, part->get_range_bounds()[comm.rank()],
-                       part->get_range_bounds()[comm.rank() + 1], restricted)
-                 : generate_3d_stencil<ValueType, GlobalIndexType>(
-                       global_size, part->get_range_bounds()[comm.rank()],
-                       part->get_range_bounds()[comm.rank() + 1], restricted);
+    auto A_data = dim == 2 ? generate_2d_stencil<ValueType, GlobalIndexType>(
+                                 comm, num_target_rows, restricted)
+                           : generate_3d_stencil<ValueType, GlobalIndexType>(
+                                 comm, num_target_rows, restricted);
+    auto part = build_part_from_local_rows<LocalIndexType, GlobalIndexType>(
+        exec, comm, A_data);
+    auto global_size = part->get_size();
 
     // Build global matrix from local matrix data.
     auto h_A = dist_mtx::create(exec->get_master(), comm);
@@ -228,6 +290,7 @@ int main(int argc, char* argv[])
         A->apply(lend(x), lend(b));
     }
     if (rank == 0) {
+        std::cout << "SIZE: " << part->get_size() << std::endl;
         std::cout << "DURATION: " << ic.compute_average_time() << "s"
                   << std::endl;
         std::cout << "ITERATIONS: " << ic.get_num_repetitions() << std::endl;

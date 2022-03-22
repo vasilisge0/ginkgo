@@ -1463,6 +1463,11 @@ public:
      */
     int get_closest_numa() const { return this->get_exec_info().numa_node; }
 
+    std::string get_bus_id() const noexcept
+    {
+        return this->get_exec_info().pci_bus_id;
+    }
+
 protected:
     void set_gpu_property();
 
@@ -1667,6 +1672,11 @@ public:
         return this->get_exec_info().closest_pu_ids;
     }
 
+    std::string get_bus_id() const noexcept
+    {
+        return this->get_exec_info().pci_bus_id;
+    }
+
 protected:
     void set_gpu_property();
 
@@ -1850,6 +1860,11 @@ public:
     std::string get_device_type() const noexcept
     {
         return this->get_exec_info().device_type;
+    }
+
+    std::string get_bus_id() const noexcept
+    {
+        return this->get_exec_info().pci_bus_id;
     }
 
 protected:

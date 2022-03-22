@@ -1077,6 +1077,28 @@ public:
         return req;
     }
 
+    void neighor_all_to_all_v(const void* send_buffer, const int* send_counts,
+                              const int* send_offsets, MPI_Datatype send_type,
+                              void* recv_buffer, const int* recv_counts,
+                              const int* recv_offsets,
+                              MPI_Datatype recv_type) const
+    {
+        GKO_ASSERT_NO_MPI_ERRORS(MPI_Neighbor_alltoallv(
+            send_buffer, send_counts, send_offsets, send_type, recv_buffer,
+            recv_counts, recv_offsets, recv_type, this->get()));
+    }
+
+
+    void all_to_all_v(const void* send_buffer, const int* send_counts,
+                      const int* send_offsets, MPI_Datatype send_type,
+                      void* recv_buffer, const int* recv_counts,
+                      const int* recv_offsets, MPI_Datatype recv_type) const
+    {
+        GKO_ASSERT_NO_MPI_ERRORS(MPI_Alltoallv(
+            send_buffer, send_counts, send_offsets, send_type, recv_buffer,
+            recv_counts, recv_offsets, recv_type, this->get()));
+    }
+
     /**
      * Does a scan operation with the given operator.
      * (MPI_Scan). See MPI documentation for more details.

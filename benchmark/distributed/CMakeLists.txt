@@ -1,1 +1,7 @@
 ginkgo_add_typed_benchmark_executables(distributed-scaling "NO" scaling.cpp)
+ginkgo_add_single_benchmark_executable(node-info "NO" "" "" node-info.cpp)
+if(GINKGO_BUILD_OMP)
+    target_compile_definitions(node-info PRIVATE GINKGO_BUILD_OMP)
+endif()
+ginkgo_add_single_benchmark_executable(node-info2 "NO" "" "" node-info2.cpp)
+ginkgo_add_single_benchmark_executable(mpi-test "NO" "" "" test.cpp)
