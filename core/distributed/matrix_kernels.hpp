@@ -63,7 +63,7 @@ namespace kernels {
         array<LocalIndexType>& offdiag_col_idxs,                             \
         array<ValueType>& offdiag_values,                                    \
         array<LocalIndexType>& local_gather_idxs,                            \
-        comm_index_type* recv_offsets,                                       \
+        comm_index_type* recv_sizes,                                       \
         array<GlobalIndexType>& local_to_global_ghost)
 
 
