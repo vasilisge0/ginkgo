@@ -38,6 +38,7 @@ target_sources(ginkgo
     matrix/row_gatherer.cpp
     multigrid/amgx_pgm.cpp
     multigrid/fixed_coarsening.cpp
+    multigrid/rgs_coarsening.cpp
     preconditioner/isai.cpp
     preconditioner/jacobi.cpp
     reorder/rcm.cpp
