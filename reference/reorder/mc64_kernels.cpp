@@ -32,7 +32,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "core/reorder/mc64_kernels.hpp"
 
-
 #include <algorithm>
 #include <cmath>
 #include <iterator>
@@ -54,6 +53,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
 #include "core/base/allocator.hpp"
+#include "core/components/addressable_pq.hpp"
 
 
 namespace gko {
@@ -83,20 +83,20 @@ void initialize_weights(std::shared_ptr<const DefaultExecutor> exec,
     auto weight =
         strategy == gko::reorder::reordering_strategy::max_diagonal_sum
             ? [](ValueType a) { return abs(a); }
-            : [](ValueType a) { return std::log(abs(a)); };
+            : [](ValueType a) { return std::log2(abs(a)); };
     workspace.resize_and_reset(nnz + 2 * num_rows);
     auto weights = workspace.get_data();
     auto u = weights + nnz;
     auto v = u + num_rows;
     for (IndexType col = 0; col < num_rows; col++) {
         u[col] = inf;
-        v[col] = zero<IndexType>();
+        v[col] = zero<remove_complex<ValueType>>();
     }
 
     for (IndexType row = 0; row < num_rows; row++) {
         const auto row_begin = row_ptrs[row];
         const auto row_end = row_ptrs[row + 1];
-        auto row_max = zero<remove_complex<ValueType>>();
+        auto row_max = -inf;
         for (IndexType idx = row_begin; idx < row_end; idx++) {
             const auto w = weight(values[idx]);
             if (w > row_max) row_max = w;
@@ -185,7 +185,8 @@ void initial_matching(std::shared_ptr<const DefaultExecutor> exec,
                 for (IndexType idx_1 = row_1_begin; idx_1 < row_1_end;
                      idx_1++) {
                     const auto col_1 = col_idxs[idx_1];
-                    if (weight(row_1, col_1, idx_1) == zero<ValueType>() &&
+                    if (weight(row_1, col_1, idx_1) <
+                            std::numeric_limits<ValueType>::epsilon() &&
                         ip[col_1] == -1) {
                         p[row] = col;
                         ip[col] = row;
@@ -203,6 +204,13 @@ void initial_matching(std::shared_ptr<const DefaultExecutor> exec,
         else
             it++;
     }
+
+    for (auto i = 0; i < num_rows; i++) {
+        std::cout << p[i] << ", ";
+    }
+    std::cout << "\n";
+    std::cout << "EPSILON: " << std::numeric_limits<ValueType>::epsilon()
+              << std::endl;
 }
 
 GKO_INSTANTIATE_FOR_EACH_NON_COMPLEX_VALUE_AND_INDEX_TYPE(
@@ -218,6 +226,7 @@ void shortest_augmenting_path(std::shared_ptr<const DefaultExecutor> exec,
                               Array<IndexType>& inv_permutation, IndexType root,
                               Array<IndexType>& parents)
 {
+    constexpr auto inf = std::numeric_limits<ValueType>::infinity();
     const auto nnz = row_ptrs[num_rows];
     auto c = workspace.get_data();
     auto u = c + nnz;
@@ -230,15 +239,12 @@ void shortest_augmenting_path(std::shared_ptr<const DefaultExecutor> exec,
     parents.fill(-one<IndexType>());
     auto parents_ = parents.get_data();
 
-    std::vector<ValueType> distance(num_rows, -one<ValueType>());
-    auto cmp = [distance](IndexType a, IndexType b) {
-        return (distance[b] == -one<IndexType>()) ||
-               (distance[a] <= distance[b]);
-    };
+    std::vector<ValueType> distance(num_rows, inf);
+    std::vector<size_type> handles(num_rows, 0);
+    addressable_priority_queue<ValueType, IndexType, 1> Q{};
     std::set<IndexType> marked_cols;
-    std::set<IndexType, decltype(cmp)> Q(cmp);
-    ValueType lsp = 0;
-    ValueType lsap = -1;
+    ValueType lsp = zero<ValueType>();
+    ValueType lsap = inf;
     IndexType jsap;
 
     auto row = root;
@@ -249,35 +255,38 @@ void shortest_augmenting_path(std::shared_ptr<const DefaultExecutor> exec,
         for (IndexType idx = row_begin; idx < row_end; idx++) {
             const auto col = col_idxs[idx];
             if (marked_cols.find(col) != marked_cols.end()) continue;
+            if (weight(row, col, idx) == inf) continue;
             ValueType dnew = lsp + weight(row, col, idx);
-            if (lsap < 0 || dnew < lsap) {
+            if (dnew < lsap) {
                 if (ip[col] == -1) {
                     lsap = dnew;
                     jsap = col;
                     parents_[col] = row;
                 } else {
-                    if (distance[col] == -1 || dnew < distance[col]) {
+                    if (dnew < distance[col]) {
                         bool new_col = false;
-                        if (distance[col] == -1) new_col = true;
+                        if (distance[col] == inf) new_col = true;
+                        auto old_distance = distance[col];
                         distance[col] = dnew;
                         parents_[col] = row;
-                        if (!new_col) Q.erase(col);
-                        Q.insert(col);
+                        if (new_col)
+                            handles[col] = Q.insert(dnew, col);
+                        else
+                            Q.update_key(handles[col], dnew);
                     }
                 }
             }
         }
-
         if (Q.empty()) break;
-        auto col_pos = Q.begin();
-        auto col = *col_pos;
+        auto col = Q.min_val();
         lsp = distance[col];
-        if (lsap >= 0 && lsap <= lsp) break;
-        Q.erase(col_pos);
+        if (lsap <= lsp) break;
         marked_cols.insert(col);
+        Q.pop_min();
         row = ip[col];
     }
-    if (lsap != -1) {
+    if (lsap != inf) {
+        std::cout << jsap << ", ";
         auto row = -1;
         auto col = -1;
         auto next_col = jsap;
@@ -297,6 +306,7 @@ void shortest_augmenting_path(std::shared_ptr<const DefaultExecutor> exec,
             if (p[row] != -1) {
                 auto col = p[row];
                 auto idx = row_ptrs[row];
+                auto stop = row_ptrs[row + 1];
                 while (col_idxs[idx] != col) idx++;
                 v[row] = c[idx] - u[col];
             }
@@ -309,10 +319,38 @@ GKO_INSTANTIATE_FOR_EACH_NON_COMPLEX_VALUE_AND_INDEX_TYPE(
 
 
 template <typename ValueType, typename IndexType>
+void update_dual_vectors(std::shared_ptr<const DefaultExecutor> exec,
+                         size_type num_rows, const IndexType* row_ptrs,
+                         const IndexType* col_idxs,
+                         const Array<IndexType>& permutation,
+                         Array<ValueType>& workspace)
+{
+    auto nnz = row_ptrs[num_rows];
+    const auto p = permutation.get_const_data();
+    auto c = workspace.get_data();
+    auto u = c + nnz;
+    auto v = u + num_rows;
+    for (size_type row = 0; row < num_rows; row++) {
+        if (p[row] != -1) {
+            auto col = p[row];
+            auto idx = row_ptrs[row];
+            while (col_idxs[idx] != col) idx++;
+            v[row] = c[idx] - u[col];
+        }
+    }
+}
+
+GKO_INSTANTIATE_FOR_EACH_NON_COMPLEX_VALUE_AND_INDEX_TYPE(
+    GKO_DECLARE_MC64_UPDATE_DUAL_VECTORS_KERNEL);
+
+
+template <typename ValueType, typename IndexType>
 void compute_scaling(std::shared_ptr<const DefaultExecutor> exec,
                      const matrix::Csr<ValueType, IndexType>* mtx,
                      Array<remove_complex<ValueType>>& workspace,
-                     gko::reorder::reordering_strategy strategy)
+                     gko::reorder::reordering_strategy strategy,
+                     gko::matrix::Diagonal<ValueType>* row_scaling,
+                     gko::matrix::Diagonal<ValueType>* col_scaling)
 {
     constexpr auto inf =
         std::numeric_limits<remove_complex<ValueType>>::infinity();
@@ -324,25 +362,47 @@ void compute_scaling(std::shared_ptr<const DefaultExecutor> exec,
     auto weights = workspace.get_data();
     auto u = weights + nnz;
     auto v = u + num_rows;
+    auto rv = row_scaling->get_values();
+    auto cv = col_scaling->get_values();
+
+    remove_complex<ValueType> minu, maxu, minv, maxv;
+    minu = inf;
+    minv = inf;
+    maxu = -inf;
+    maxv = -inf;
 
     if (strategy == gko::reorder::reordering_strategy::max_diagonal_product) {
         for (size_type i = 0; i < num_rows; i++) {
-            u[i] = std::exp(u[i]);
-            v[i] = std::exp(u[i]);
+            if (u[i] < minu) minu = u[i];
+            if (u[i] > maxu) maxu = u[i];
+            if (v[i] < minv) minv = v[i];
+            if (v[i] > maxv) maxv = v[i];
         }
-    }
+        auto scale = (std::min(minu, -maxv) + std::max(maxu, -minv)) / 2.;
+        for (size_type i = 0; i < num_rows; i++) {
+            remove_complex<ValueType> u_val = std::exp2(u[i] - scale);
+            remove_complex<ValueType> v_val = std::exp2(v[i] + scale);
+            cv[i] = ValueType{u_val};
+            rv[i] = ValueType{v_val};
+        }
 
-    for (size_type row = 0; row < num_rows; row++) {
-        const auto row_begin = row_ptrs[row];
-        const auto row_end = row_ptrs[row + 1];
-        auto row_max = zero<remove_complex<ValueType>>();
-        for (size_type idx = row_begin; idx < row_end; idx++) {
-            const auto abs_v = abs(values[idx]);
-            if (row_max < abs_v) {
-                row_max = abs_v;
+        for (size_type row = 0; row < num_rows; row++) {
+            const auto row_begin = row_ptrs[row];
+            const auto row_end = row_ptrs[row + 1];
+            auto row_max = zero<remove_complex<ValueType>>();
+            for (size_type idx = row_begin; idx < row_end; idx++) {
+                const auto abs_v = abs(values[idx]);
+                if (row_max < abs_v) {
+                    row_max = abs_v;
+                }
             }
+            rv[row] /= row_max;
         }
-        v[row] /= row_max;
+    } else {
+        for (size_type i = 0; i < num_rows; i++) {
+            cv[i] = 1.;
+            rv[i] = 1.;
+        }
     }
 }
 

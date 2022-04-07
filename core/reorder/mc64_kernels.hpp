@@ -76,11 +76,20 @@ namespace kernels {
         Array<IndexType>& parents)
 
 
-#define GKO_DECLARE_MC64_COMPUTE_SCALING_KERNEL(ValueType, IndexType)  \
-    void compute_scaling(std::shared_ptr<const DefaultExecutor> exec,  \
-                         const matrix::Csr<ValueType, IndexType>* mtx, \
-                         Array<remove_complex<ValueType>>& workspace,  \
-                         gko::reorder::reordering_strategy strategy)
+#define GKO_DECLARE_MC64_COMPUTE_SCALING_KERNEL(ValueType, IndexType)   \
+    void compute_scaling(std::shared_ptr<const DefaultExecutor> exec,   \
+                         const matrix::Csr<ValueType, IndexType>* mtx,  \
+                         Array<remove_complex<ValueType>>& workspace,   \
+                         gko::reorder::reordering_strategy strategy,    \
+                         gko::matrix::Diagonal<ValueType>* row_scaling, \
+                         gko::matrix::Diagonal<ValueType>* col_scaling)
+
+
+#define GKO_DECLARE_MC64_UPDATE_DUAL_VECTORS_KERNEL(ValueType, IndexType) \
+    void update_dual_vectors(                                             \
+        std::shared_ptr<const DefaultExecutor> exec, size_type num_rows,  \
+        const IndexType* row_ptrs, const IndexType* col_idxs,             \
+        const Array<IndexType>& permutation, Array<ValueType>& workspace)
 
 
 #define GKO_DECLARE_ALL_AS_TEMPLATES                                        \
@@ -91,7 +100,9 @@ namespace kernels {
     template <typename ValueType, typename IndexType>                       \
     GKO_DECLARE_MC64_SHORTEST_AUGMENTING_PATH_KERNEL(ValueType, IndexType); \
     template <typename ValueType, typename IndexType>                       \
-    GKO_DECLARE_MC64_COMPUTE_SCALING_KERNEL(ValueType, IndexType)
+    GKO_DECLARE_MC64_COMPUTE_SCALING_KERNEL(ValueType, IndexType);          \
+    template <typename ValueType, typename IndexType>                       \
+    GKO_DECLARE_MC64_UPDATE_DUAL_VECTORS_KERNEL(ValueType, IndexType)
 
 
 GKO_DECLARE_FOR_ALL_EXECUTOR_NAMESPACES(mc64, GKO_DECLARE_ALL_AS_TEMPLATES);

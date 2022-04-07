@@ -62,6 +62,7 @@ GKO_REGISTER_OPERATION(initial_matching, mc64::initial_matching);
 GKO_REGISTER_OPERATION(shortest_augmenting_path,
                        mc64::shortest_augmenting_path);
 GKO_REGISTER_OPERATION(compute_scaling, mc64::compute_scaling);
+GKO_REGISTER_OPERATION(update_dual_vectors, mc64::update_dual_vectors);
 
 
 }  // anonymous namespace
@@ -75,6 +76,7 @@ void Mc64<ValueType, IndexType>::generate(
 {
     auto mtx = as<matrix_type>(system_matrix);
     size_type num_rows = mtx->get_size()[0];
+    size_type nnz = mtx->get_num_stored_elements();
 
     Array<remove_complex<ValueType>> workspace{exec};
     Array<IndexType> permutation{exec, num_rows};
@@ -98,23 +100,22 @@ void Mc64<ValueType, IndexType>::generate(
             num_rows, row_ptrs, col_idxs, workspace, permutation,
             inv_permutation, root, parents));
     }
-
+    std::cout << "\n";
     permutation_->copy_from(
-        PermutationMatrix::create(exec, system_matrix->get_size(), permutation)
+        PermutationMatrix::create(
+            exec, system_matrix->get_size(), permutation,
+            gko::matrix::row_permute | matrix::inverse_permute)
             .get());
     inv_permutation_->copy_from(
         share(PermutationMatrix::create(exec, system_matrix->get_size(),
                                         inv_permutation,
                                         matrix::column_permute))
             .get());
-
+    row_scaling_->copy_from(DiagonalMatrix::create(exec, num_rows));
+    col_scaling_->copy_from(DiagonalMatrix::create(exec, num_rows));
     exec->run(
-        mc64::make_compute_scaling(mtx.get(), workspace, parameters_.strategy));
-
-    const auto nnz = mtx->get_num_stored_elements();
-    auto weights = workspace.get_data();
-    auto col_scaling_coefficients = weights + nnz;
-    auto row_scaling_coefficients = col_scaling_coefficients + num_rows;
+        mc64::make_compute_scaling(mtx.get(), workspace, parameters_.strategy,
+                                   row_scaling_.get(), col_scaling_.get()));
 }
 
 

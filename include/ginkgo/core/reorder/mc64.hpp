@@ -45,6 +45,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <ginkgo/core/base/types.hpp>
 #include <ginkgo/core/base/utils.hpp>
 #include <ginkgo/core/matrix/csr.hpp>
+#include <ginkgo/core/matrix/diagonal.hpp>
 #include <ginkgo/core/matrix/identity.hpp>
 #include <ginkgo/core/matrix/permutation.hpp>
 #include <ginkgo/core/matrix/sparsity_csr.hpp>
@@ -72,6 +73,7 @@ class Mc64 : public EnablePolymorphicObject<Mc64<ValueType, IndexType>,
 public:
     using matrix_type = matrix::Csr<ValueType, IndexType>;
     using PermutationMatrix = matrix::Permutation<IndexType>;
+    using DiagonalMatrix = matrix::Diagonal<ValueType>;
     using value_type = ValueType;
     using index_type = IndexType;
 
@@ -96,6 +98,16 @@ public:
     std::shared_ptr<const PermutationMatrix> get_inverse_permutation() const
     {
         return inv_permutation_;
+    }
+
+    std::shared_ptr<const DiagonalMatrix> get_row_scaling() const
+    {
+        return row_scaling_;
+    }
+
+    std::shared_ptr<const DiagonalMatrix> get_col_scaling() const
+    {
+        return col_scaling_;
     }
 
     GKO_CREATE_FACTORY_PARAMETERS(parameters, Factory)
@@ -138,6 +150,8 @@ protected:
         auto const dim = args.system_matrix->get_size();
         permutation_ = PermutationMatrix::create(cpu_exec, dim);
         inv_permutation_ = PermutationMatrix::create(cpu_exec, dim);
+        row_scaling_ = DiagonalMatrix::create(cpu_exec, dim[0]);
+        col_scaling_ = DiagonalMatrix::create(cpu_exec, dim[0]);
 
         this->generate(cpu_exec, args.system_matrix);
 
@@ -150,12 +164,20 @@ protected:
             auto gpu_inv_perm = PermutationMatrix::create(gpu_exec, dim);
             gpu_inv_perm->copy_from(inv_permutation_.get());
             inv_permutation_ = gko::share(gpu_inv_perm);
+            auto gpu_row_scaling = DiagonalMatrix::create(gpu_exec, dim[0]);
+            gpu_row_scaling->copy_from(row_scaling_.get());
+            row_scaling_ = gko::share(gpu_row_scaling);
+            auto gpu_col_scaling = DiagonalMatrix::create(gpu_exec, dim[0]);
+            gpu_col_scaling->copy_from(col_scaling_.get());
+            col_scaling_ = gko::share(gpu_col_scaling);
         }
     }
 
 private:
     std::shared_ptr<PermutationMatrix> permutation_;
     std::shared_ptr<PermutationMatrix> inv_permutation_;
+    std::shared_ptr<DiagonalMatrix> row_scaling_;
+    std::shared_ptr<DiagonalMatrix> col_scaling_;
 };
 
 

@@ -32,6 +32,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <algorithm>
 #include <cmath>
+#include <fstream>
 #include <memory>
 
 
@@ -46,6 +47,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "core/reorder/mc64_kernels.hpp"
 #include "core/test/utils.hpp"
 #include "core/test/utils/assertions.hpp"
+#include "matrices/config.hpp"
 
 
 namespace {
@@ -76,25 +78,25 @@ protected:
               I<real_type>({2., 1., 0., 0., 4., 0., 2., 0., 1., 0., 2., 3., 0.,
                             0., 1., 0., 0., 0., 1., 0., 0., 0., 0., 0., 0.})},
           expected_workspace_product{ref, I<real_type>({
-                                              std::log(3.),
-                                              std::log(1.5),
+                                              std::log2(3.),
+                                              std::log2(1.5),
                                               0.,
                                               0.,
-                                              std::log(5.),
+                                              std::log2(5.),
                                               0.,
-                                              std::log(1.5),
+                                              std::log2(1.5),
                                               0.,
-                                              std::log(4. / 3.),
+                                              std::log2(4. / 3.),
                                               0.,
-                                              std::log(2.),
-                                              std::log(1.6),
-                                              0.,
-                                              0.,
-                                              std::log(1.5),
+                                              std::log2(2.),
+                                              std::log2(1.6),
                                               0.,
                                               0.,
+                                              std::log2(1.5),
                                               0.,
-                                              std::log(4. / 3.),
+                                              0.,
+                                              0.,
+                                              std::log2(4. / 3.),
                                               0.,
                                               0.,
                                               0.,
@@ -262,7 +264,7 @@ TYPED_TEST(Mc64, ShortestAugmentingPathExample2)
 }
 
 
-TYPED_TEST(Mc64, CreatesCorrectPermutationAndScalingExample)
+TYPED_TEST(Mc64, CreatesCorrectPermutationAndScalingExampleSum)
 {
     using index_type = typename TestFixture::index_type;
     using real_type = typename TestFixture::real_type;
@@ -288,6 +290,132 @@ TYPED_TEST(Mc64, CreatesCorrectPermutationAndScalingExample)
     GKO_ASSERT_EQ(inv_perm[3], 2);
     GKO_ASSERT_EQ(inv_perm[4], 4);
     GKO_ASSERT_EQ(inv_perm[5], 3);
+}
+
+
+TYPED_TEST(Mc64, CreatesCorrectPermutationAndScalingExampleProduct)
+{
+    using index_type = typename TestFixture::index_type;
+    using real_type = typename TestFixture::real_type;
+    using value_type = typename TestFixture::value_type;
+    using matrix_type = typename TestFixture::matrix_type;
+
+    auto expected_result =
+        gko::initialize<matrix_type>({{1., 0.3, 0., 0., 0., 0.},
+                                      {0., 1., 1., 0., 0., 0.},
+                                      {0., 0., 1., 0., 0., 1.},
+                                      {0., 0., 0., 1., 0.6, 0.},
+                                      {1. / 3., 1., 0., 0., 1., 0.},
+                                      {0., 0., 0., 1., 0., 1.}},
+                                     this->ref);
+
+    auto mc64_factory =
+        gko::reorder::Mc64<value_type, index_type>::build()
+            .with_strategy(
+                gko::reorder::reordering_strategy::max_diagonal_product)
+            .on(this->ref);
+    auto mc64 = mc64_factory->generate(this->mtx);
+
+    auto perm = mc64->get_permutation();  //->get_permutation();
+    auto inv_perm =
+        mc64->get_inverse_permutation();         //->get_const_permutation();
+    auto row_scaling = mc64->get_row_scaling();  //->get_const_values();
+    auto col_scaling = mc64->get_col_scaling();  //->get_const_values();
+
+    auto result = gko::clone(this->ref, this->mtx);
+    col_scaling->rapply(result.get(), result.get());
+    row_scaling->apply(result.get(), result.get());
+    perm->apply(result.get(), result.get());
+
+    GKO_ASSERT_MTX_NEAR(result, expected_result, this->tolerance);
+    /*GKO_ASSERT_EQ(perm[0], 4);
+    GKO_ASSERT_EQ(perm[1], 0);
+    GKO_ASSERT_EQ(perm[2], 5);
+    GKO_ASSERT_EQ(perm[3], 2);
+    GKO_ASSERT_EQ(perm[4], 3);
+    GKO_ASSERT_EQ(perm[5], 1);
+    GKO_ASSERT_EQ(inv_perm[0], 1);
+    GKO_ASSERT_EQ(inv_perm[1], 5);
+    GKO_ASSERT_EQ(inv_perm[2], 3);
+    GKO_ASSERT_EQ(inv_perm[3], 4);
+    GKO_ASSERT_EQ(inv_perm[4], 0);
+    GKO_ASSERT_EQ(inv_perm[5], 2);
+    GKO_ASSERT_NEAR(row_scaling[0], real_type{0.6}, this->tolerance);
+    GKO_ASSERT_NEAR(row_scaling[1], real_type{1./3.}, this->tolerance);
+    GKO_ASSERT_NEAR(row_scaling[2], real_type{2./3.}, this->tolerance);
+    GKO_ASSERT_NEAR(row_scaling[3], real_type{0.75}, this->tolerance);
+    GKO_ASSERT_NEAR(row_scaling[4], real_type{5./6.}, this->tolerance);
+    GKO_ASSERT_NEAR(row_scaling[5], real_type{0.5}, this->tolerance);
+    GKO_ASSERT_NEAR(col_scaling[0], real_type{1./3.}, this->tolerance);
+    GKO_ASSERT_NEAR(col_scaling[1], real_type{0.6}, this->tolerance);
+    GKO_ASSERT_NEAR(col_scaling[2], real_type{0.375}, this->tolerance);
+    GKO_ASSERT_NEAR(col_scaling[3], real_type{1./3.}, this->tolerance);
+    GKO_ASSERT_NEAR(col_scaling[4], real_type{0.4}, this->tolerance);
+    GKO_ASSERT_NEAR(col_scaling[5], real_type{0.5}, this->tolerance);*/
+}
+
+
+TYPED_TEST(Mc64, CreatesCorrectPermutationAndScalingLargeTrivialExampleProduct)
+{
+    using index_type = typename TestFixture::index_type;
+    using real_type = typename TestFixture::real_type;
+    using value_type = typename TestFixture::value_type;
+    using matrix_type = typename TestFixture::matrix_type;
+
+    std::ifstream mtx_stream{gko::matrices::location_1138_bus_mtx};
+    auto mtx = gko::share(gko::read<matrix_type>(mtx_stream, this->ref));
+    std::ifstream result_stream{gko::matrices::location_1138_bus_mc64_result};
+    auto expected_result = gko::read<matrix_type>(result_stream, this->ref);
+
+    auto mc64_factory =
+        gko::reorder::Mc64<value_type, index_type>::build()
+            .with_strategy(
+                gko::reorder::reordering_strategy::max_diagonal_product)
+            .on(this->ref);
+    auto mc64 = mc64_factory->generate(mtx);
+
+    auto perm = mc64->get_permutation();
+    auto row_scaling = mc64->get_row_scaling();
+    auto col_scaling = mc64->get_col_scaling();
+
+    col_scaling->rapply(mtx.get(), mtx.get());
+    row_scaling->apply(mtx.get(), mtx.get());
+    perm->apply(mtx.get(), mtx.get());
+
+    GKO_ASSERT_MTX_NEAR(mtx, expected_result, this->tolerance);
+}
+
+
+TYPED_TEST(Mc64, CreatesCorrectPermutationAndScalingLargeExampleProduct)
+{
+    using index_type = typename TestFixture::index_type;
+    using real_type = typename TestFixture::real_type;
+    using value_type = typename TestFixture::value_type;
+    using matrix_type = typename TestFixture::matrix_type;
+
+    std::ifstream mtx_stream{gko::matrices::location_nontrivial_mc64_example};
+    auto mtx = gko::share(gko::read<matrix_type>(mtx_stream, this->ref));
+    mtx->sort_by_column_index();
+    std::ifstream result_stream{gko::matrices::location_nontrivial_mc64_result};
+    auto expected_result = gko::read<matrix_type>(result_stream, this->ref);
+
+    auto mc64_factory =
+        gko::reorder::Mc64<value_type, index_type>::build()
+            .with_strategy(
+                gko::reorder::reordering_strategy::max_diagonal_product)
+            .on(this->ref);
+    auto mc64 = mc64_factory->generate(mtx);
+
+    auto perm = mc64->get_permutation();
+    auto row_scaling = mc64->get_row_scaling();
+    auto col_scaling = mc64->get_col_scaling();
+
+    col_scaling->rapply(mtx.get(), mtx.get());
+    row_scaling->apply(mtx.get(), mtx.get());
+    perm->apply(mtx.get(), mtx.get());
+
+    // GKO_ASSERT_MTX_NEAR(mtx, expected_result, this->tolerance);
+    GKO_ASSERT_MTX_EQ_SPARSITY(mtx, expected_result);
 }
 
 
