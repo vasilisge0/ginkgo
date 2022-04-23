@@ -45,6 +45,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
 #include "core/base/kernel_declaration.hpp"
+#include "core/components/addressable_pq.hpp"
 
 
 namespace gko {
@@ -73,7 +74,8 @@ namespace kernels {
         const IndexType* row_ptrs, const IndexType* col_idxs,                  \
         Array<ValueType>& workspace, Array<IndexType>& permutation,            \
         Array<IndexType>& inv_permutation, IndexType root,                     \
-        Array<IndexType>& parents)
+        Array<IndexType>& parents,                                             \
+        addressable_priority_queue<ValueType, IndexType, 2>& Q)
 
 
 #define GKO_DECLARE_MC64_COMPUTE_SCALING_KERNEL(ValueType, IndexType)   \

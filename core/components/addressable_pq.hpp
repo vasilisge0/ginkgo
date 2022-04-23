@@ -115,6 +115,15 @@ struct addressable_priority_queue {
     /** Returns true if and only if the queue has size 0. */
     bool empty() const { return size() == 0; }
 
+    void reset()
+    {
+        m_keys.clear();
+        m_values.clear();
+        m_handles.clear();
+        m_handle_pos.clear();
+        m_free_handles.clear();
+    }
+
 private:
     constexpr static int degree = 1 << Degree_Log2;
     constexpr static auto invalid_handle = -1;  //((std::size_t)-1);

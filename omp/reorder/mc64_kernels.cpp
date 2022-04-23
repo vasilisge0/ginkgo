@@ -74,13 +74,13 @@ GKO_INSTANTIATE_FOR_EACH_NON_COMPLEX_VALUE_AND_INDEX_TYPE(
 
 
 template <typename ValueType, typename IndexType>
-void shortest_augmenting_path(std::shared_ptr<const DefaultExecutor> exec,
-                              size_type num_rows, const IndexType* row_ptrs,
-                              const IndexType* col_idxs,
-                              Array<ValueType>& workspace,
-                              Array<IndexType>& permutation,
-                              Array<IndexType>& inv_permutation, IndexType root,
-                              Array<IndexType>& parents) GKO_NOT_IMPLEMENTED;
+void shortest_augmenting_path(
+    std::shared_ptr<const DefaultExecutor> exec, size_type num_rows,
+    const IndexType* row_ptrs, const IndexType* col_idxs,
+    Array<ValueType>& workspace, Array<IndexType>& permutation,
+    Array<IndexType>& inv_permutation, IndexType root,
+    Array<IndexType>& parents,
+    addressable_priority_queue<ValueType, IndexType, 2>& Q) GKO_NOT_IMPLEMENTED;
 
 GKO_INSTANTIATE_FOR_EACH_NON_COMPLEX_VALUE_AND_INDEX_TYPE(
     GKO_DECLARE_MC64_SHORTEST_AUGMENTING_PATH_KERNEL);

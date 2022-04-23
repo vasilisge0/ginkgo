@@ -94,13 +94,18 @@ void Mc64<ValueType, IndexType>::generate(
                                           workspace, permutation,
                                           inv_permutation, unmatched_rows));
 
-    Array<IndexType> parents{exec, num_rows};
+    // exec->run(mc64::make_update_dual_vectors(num_rows, row_ptrs, col_idxs,
+    // permutation, workspace));
+
+    Array<IndexType> parents{exec, 4 * num_rows};
+    addressable_priority_queue<remove_complex<ValueType>, IndexType, 2> Q{};
+    parents.fill(-2);
     for (auto root : unmatched_rows) {
         exec->run(mc64::make_shortest_augmenting_path(
             num_rows, row_ptrs, col_idxs, workspace, permutation,
-            inv_permutation, root, parents));
+            inv_permutation, root, parents, Q));
     }
-    std::cout << "\n";
+    // std::cout << "\n";
     permutation_->copy_from(
         PermutationMatrix::create(
             exec, system_matrix->get_size(), permutation,

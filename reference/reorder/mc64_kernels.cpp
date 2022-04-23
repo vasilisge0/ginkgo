@@ -53,7 +53,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
 #include "core/base/allocator.hpp"
-#include "core/components/addressable_pq.hpp"
 
 
 namespace gko {
@@ -65,6 +64,112 @@ namespace reference {
  * @ingroup reorder
  */
 namespace mc64 {
+
+
+namespace {
+
+
+float fastlog2(float x)
+{
+    // a*(x-1)^2 + b*(x-1) approximates log2(x) when 0.75 <= x < 1.5
+    const float a = -.6296735;
+    const float b = 1.466967;
+    float signif, fexp;
+    int exp;
+    float lg2;
+    union {
+        float f;
+        unsigned int i;
+    } ux1, ux2;
+    int greater;  // really a boolean
+    /*
+     * Assume IEEE representation, which is sgn(1):exp(8):frac(23)
+     * representing (1+frac)*2^(exp-127)  Call 1+frac the significand
+     */
+
+    // get exponent
+    ux1.f = x;
+    exp = (ux1.i & 0x7F800000) >> 23;
+    // actual exponent is exp-127, will subtract 127 later
+
+    greater = ux1.i & 0x00400000;  // true if signif > 1.5
+    if (greater) {
+        // signif >= 1.5 so need to divide by 2.  Accomplish this by
+        // stuffing exp = 126 which corresponds to an exponent of -1
+        ux2.i = (ux1.i & 0x007FFFFF) | 0x3f000000;
+        signif = ux2.f;
+        fexp = exp - 126;  // 126 instead of 127 compensates for division by 2
+        signif = signif - 1.0;                          // <
+        lg2 = fexp + a * signif * signif + b * signif;  // <
+    } else {
+        // get signif by stuffing exp = 127 which corresponds to an exponent of
+        // 0
+        ux2.i = (ux1.i & 0x007FFFFF) | 0x3f800000;
+        signif = ux2.f;
+        fexp = exp - 127;
+        signif = signif - 1.0;                          // <<--
+        lg2 = fexp + a * signif * signif + b * signif;  // <<--
+    }
+    // lines marked <<-- are common code, but optimize better
+    //  when duplicated, at least when using gcc
+    return (lg2);
+}
+
+
+double fastlog2(double x)
+{
+    // a*(x-1)^2 + b*(x-1) approximates log2(x) when 0.75 <= x < 1.5
+    const double a = -.6296735;
+    const double b = 1.466967;
+    // const double a = 2.971710;
+    // const double b = 2.049810;
+    double signif, fexp;
+    long int exp;
+    double lg2;
+    union {
+        double f;
+        long int i;
+    } ux1, ux2;
+    long int greater;  // really a boolean
+//#define FN  fexp + (a*signif)/(signif + b)
+#define FN fexp + signif*(a * signif + b)
+    /*
+     * Assume IEEE representation, which is sgn(1):exp(11):frac(52)
+     * representing (1+frac)*2^(exp-127)  Call 1+frac the significand
+     */
+
+    // get exponent
+    ux1.f = x;
+    exp = (ux1.i & 0x7FF0000000000000) >> 52;
+    // actual exponent is exp-1023, will subtract 1023 later
+
+    greater = ux1.i & 0x0008000000000000;  // true if signif > 1.5
+    if (greater) {
+        // signif >= 1.5 so need to divide by 2.  Accomplish this by
+        // stuffing exp = 1022 which corresponds to an exponent of -1
+        ux2.i = (ux1.i & 0x000FFFFFFFFFFFFF) | 0x3fe0000000000000;
+        signif = ux2.f;
+        fexp = exp - 1022;  // 126 instead of 127 compensates for division by 2
+        signif = signif - 1.0;  // <
+        // lg2 = fexp + signif * (a*signif + b);  // <
+        lg2 = FN;
+    } else {
+        // get signif by stuffing exp = 1023 which corresponds to an exponent of
+        // 0
+        ux2.i = (ux1.i & 0x000FFFFFFFFFFFFF) | 0x3ff0000000000000;
+        signif = ux2.f;
+        fexp = exp - 1023;
+        signif = signif - 1.0;  // <<--
+        // lg2 = fexp + signif * (a*signif + b);  // <<--
+        lg2 = FN;
+    }
+    // lines marked <<-- are common code, but optimize better
+    //  when duplicated, at least when using gcc
+    return (lg2);
+}
+
+
+}  // namespace
 
 
 template <typename ValueType, typename IndexType>
@@ -83,8 +188,8 @@ void initialize_weights(std::shared_ptr<const DefaultExecutor> exec,
     auto weight =
         strategy == gko::reorder::reordering_strategy::max_diagonal_sum
             ? [](ValueType a) { return abs(a); }
-            : [](ValueType a) { return std::log2(abs(a)); };
-    workspace.resize_and_reset(nnz + 2 * num_rows);
+            : [](ValueType a) { return fastlog2(abs(a)); };
+    workspace.resize_and_reset(nnz + 3 * num_rows);
     auto weights = workspace.get_data();
     auto u = weights + nnz;
     auto v = u + num_rows;
@@ -99,11 +204,12 @@ void initialize_weights(std::shared_ptr<const DefaultExecutor> exec,
         auto row_max = -inf;
         for (IndexType idx = row_begin; idx < row_end; idx++) {
             const auto w = weight(values[idx]);
+            weights[idx] = w;
             if (w > row_max) row_max = w;
         }
 
         for (IndexType idx = row_begin; idx < row_end; idx++) {
-            const auto c = row_max - weight(values[idx]);
+            const auto c = row_max - weights[idx];
             weights[idx] = c;
             const auto col = col_idxs[idx];
             if (c < u[col]) u[col] = c;
@@ -175,18 +281,21 @@ void initial_matching(std::shared_ptr<const DefaultExecutor> exec,
         const auto row_begin = row_ptrs[row];
         const auto row_end = row_ptrs[row + 1];
         bool found = false;
-        for (IndexType idx = row_begin; idx < row_end; idx++) {
+        for (IndexType idx = row_begin; idx < row_end; idx++) {  //<
             const auto col = col_idxs[idx];
-            if (weight(row, col, idx) <
-                std::numeric_limits<ValueType>::epsilon()) {
+            if (weight(row, col, idx) == zero<ValueType>()) {
+                // std::numeric_limits<ValueType>::epsilon()) {
                 const auto row_1 = ip[col];
                 const auto row_1_begin = row_ptrs[row_1];
                 const auto row_1_end = row_ptrs[row_1 + 1];
                 for (IndexType idx_1 = row_1_begin; idx_1 < row_1_end;
                      idx_1++) {
                     const auto col_1 = col_idxs[idx_1];
-                    if (weight(row_1, col_1, idx_1) <
-                            std::numeric_limits<ValueType>::epsilon() &&
+                    if (weight(row_1, col_1, idx_1) ==
+                            zero<
+                                ValueType>() &&  //<
+                                                 // std::numeric_limits<ValueType>::epsilon()
+                                                 // &&
                         ip[col_1] == -1) {
                         p[row] = col;
                         ip[col] = row;
@@ -205,12 +314,12 @@ void initial_matching(std::shared_ptr<const DefaultExecutor> exec,
             it++;
     }
 
-    for (auto i = 0; i < num_rows; i++) {
+    /*for (auto i = 0; i < num_rows; i++) {
         std::cout << p[i] << ", ";
     }
     std::cout << "\n";
     std::cout << "EPSILON: " << std::numeric_limits<ValueType>::epsilon()
-              << std::endl;
+              << std::endl;*/
 }
 
 GKO_INSTANTIATE_FOR_EACH_NON_COMPLEX_VALUE_AND_INDEX_TYPE(
@@ -218,57 +327,61 @@ GKO_INSTANTIATE_FOR_EACH_NON_COMPLEX_VALUE_AND_INDEX_TYPE(
 
 
 template <typename ValueType, typename IndexType>
-void shortest_augmenting_path(std::shared_ptr<const DefaultExecutor> exec,
-                              size_type num_rows, const IndexType* row_ptrs,
-                              const IndexType* col_idxs,
-                              Array<ValueType>& workspace,
-                              Array<IndexType>& permutation,
-                              Array<IndexType>& inv_permutation, IndexType root,
-                              Array<IndexType>& parents)
+void shortest_augmenting_path(
+    std::shared_ptr<const DefaultExecutor> exec, size_type num_rows,
+    const IndexType* row_ptrs, const IndexType* col_idxs,
+    Array<ValueType>& workspace, Array<IndexType>& permutation,
+    Array<IndexType>& inv_permutation, IndexType root,
+    Array<IndexType>& parents,
+    addressable_priority_queue<ValueType, IndexType, 2>& Q)
 {
     constexpr auto inf = std::numeric_limits<ValueType>::infinity();
     const auto nnz = row_ptrs[num_rows];
     auto c = workspace.get_data();
     auto u = c + nnz;
     auto v = u + num_rows;
-    auto weight = [c, u, v](IndexType row, IndexType col, IndexType idx) {
-        return c[idx] - u[col] - v[row];
-    };
+    auto distance = v + num_rows;
+
     auto p = permutation.get_data();
     auto ip = inv_permutation.get_data();
-    parents.fill(-one<IndexType>());
-    auto parents_ = parents.get_data();
 
-    std::vector<ValueType> distance(num_rows, inf);
-    std::vector<size_type> handles(num_rows, 0);
-    addressable_priority_queue<ValueType, IndexType, 1> Q{};
-    std::set<IndexType> marked_cols;
+    auto parents_ = parents.get_data();
+    auto handles = parents_ + num_rows;
+    auto generation = handles + num_rows;
+    auto marked_cols = generation + num_rows;
+
+    Q.reset();
+
     ValueType lsp = zero<ValueType>();
     ValueType lsap = inf;
     IndexType jsap;
 
     auto row = root;
+    auto marked_counter = 0;
+    auto update_v_counter = 0;
 
     while (true) {
         const auto row_begin = row_ptrs[row];
         const auto row_end = row_ptrs[row + 1];
         for (IndexType idx = row_begin; idx < row_end; idx++) {
             const auto col = col_idxs[idx];
-            if (marked_cols.find(col) != marked_cols.end()) continue;
-            if (weight(row, col, idx) == inf) continue;
-            ValueType dnew = lsp + weight(row, col, idx);
+            const auto gen = generation[col];
+
+            if (gen == -1) continue;
+
+            const ValueType dnew = lsp + c[idx] - u[col] - v[row];
+
             if (dnew < lsap) {
                 if (ip[col] == -1) {
                     lsap = dnew;
                     jsap = col;
                     parents_[col] = row;
                 } else {
-                    if (dnew < distance[col]) {
-                        bool new_col = false;
-                        if (distance[col] == inf) new_col = true;
-                        auto old_distance = distance[col];
+                    if (gen != root || dnew < distance[col]) {
+                        bool new_col = gen != root;
                         distance[col] = dnew;
                         parents_[col] = row;
+                        generation[col] = root;
                         if (new_col)
                             handles[col] = Q.insert(dnew, col);
                         else
@@ -278,15 +391,16 @@ void shortest_augmenting_path(std::shared_ptr<const DefaultExecutor> exec,
             }
         }
         if (Q.empty()) break;
-        auto col = Q.min_val();
+        const auto col = Q.min_val();
         lsp = distance[col];
         if (lsap <= lsp) break;
-        marked_cols.insert(col);
+        generation[col] = -1;
+        marked_cols[marked_counter] = col;
+        marked_counter++;
         Q.pop_min();
         row = ip[col];
     }
     if (lsap != inf) {
-        std::cout << jsap << ", ";
         auto row = -1;
         auto col = -1;
         auto next_col = jsap;
@@ -296,20 +410,23 @@ void shortest_augmenting_path(std::shared_ptr<const DefaultExecutor> exec,
             next_col = p[row];
             p[row] = col;
             ip[col] = row;
-        }
-
-        for (auto marked_col : marked_cols) {
-            u[marked_col] += distance[marked_col] - lsap;
-        }
-
-        for (size_type row = 0; row < num_rows; row++) {
-            if (p[row] != -1) {
-                auto col = p[row];
-                auto idx = row_ptrs[row];
-                auto stop = row_ptrs[row + 1];
-                while (col_idxs[idx] != col) idx++;
-                v[row] = c[idx] - u[col];
+            if (generation[col] != -1) {
+                marked_cols[marked_counter + update_v_counter] = col;
+                update_v_counter++;
             }
+        }
+
+        for (size_type i = 0; i < marked_counter + update_v_counter; i++) {
+            const auto col = marked_cols[i];
+            if (i < marked_counter) {
+                u[col] += distance[col] - lsap;
+            }
+            row = ip[col];
+            auto idx = row_ptrs[row];
+            auto stop = row_ptrs[row + 1];
+            while (col_idxs[idx] != col) idx++;
+            v[row] = c[idx] - u[col];
+            generation[col] = -2;
         }
     }
 }
