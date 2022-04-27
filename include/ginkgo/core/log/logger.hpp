@@ -642,6 +642,10 @@ protected:
     template <size_type Event, typename... Params>
     void log(Params&&... params) const
     {
+        /*if (!std::is_base_of<Executor, ConcreteLoggable>::value) {
+            static_cast<const ConcreteLoggable*>(this)->get_executor()->log(
+                std::forward<Params>(params)...);
+        }*/
         for (auto& logger : loggers_) {
             logger->template on<Event>(std::forward<Params>(params)...);
         }
