@@ -46,6 +46,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <ginkgo/core/base/polymorphic_object.hpp>
 #include <ginkgo/core/base/types.hpp>
 #include <ginkgo/core/base/utils_helper.hpp>
+#include <ginkgo/core/log/logger.hpp>
 
 
 #if GINKGO_BUILD_MPI
@@ -225,6 +226,8 @@ private:
 };
 
 
+class request;
+
 namespace {
 
 
@@ -242,6 +245,50 @@ public:
         delete comm;
     }
 };
+
+template <typename ConcreteLoggable, typename PolymorphicBase = log::Loggable>
+class EnableSharedPtrLogging : public PolymorphicBase {
+public:
+    void add_logger(std::shared_ptr<const log::Logger> logger) override
+    {
+        loggers_->push_back(logger);
+    }
+
+    void remove_logger(const log::Logger* logger) override
+    {
+        auto idx =
+            find_if(begin(*loggers_), end(*loggers_),
+                    [&logger](const auto& l) { return lend(l) == logger; });
+        if (idx != end(*loggers_)) {
+            loggers_->erase(idx);
+        } else {
+            throw OutOfBoundsError(__FILE__, __LINE__, loggers_->size(),
+                                   loggers_->size());
+        }
+    }
+
+    const std::vector<std::shared_ptr<const log::Logger>>& get_loggers()
+        const override
+    {
+        return *loggers_;
+    }
+
+    void clear_loggers() override { loggers_->clear(); }
+
+protected:
+    template <size_type Event, typename... Params>
+    void log(Params&&... params) const
+    {
+        for (auto& logger : *loggers_) {
+            logger->template on<Event>(std::forward<Params>(params)...);
+        }
+    }
+
+    std::shared_ptr<std::vector<std::shared_ptr<const log::Logger>>> loggers_;
+};
+
+
+using partial_logger = std::function<void(const request*)>;
 
 
 }  // namespace
@@ -295,7 +342,9 @@ public:
      * The default constructor. It creates a null MPI_Request of
      * MPI_REQUEST_NULL type.
      */
-    request() : req_(MPI_REQUEST_NULL) {}
+    explicit request(partial_logger logger = [](const request*) {})
+        : req_(MPI_REQUEST_NULL), partial_logger_(std::move(logger))
+    {}
 
     /**
      * Get a pointer to the underlying MPI_Request handle.
@@ -314,12 +363,14 @@ public:
     {
         status status;
         GKO_ASSERT_NO_MPI_ERRORS(MPI_Wait(&req_, status.get()));
+        partial_logger_(this);
         return status;
     }
 
 
 private:
     MPI_Request req_;
+    partial_logger partial_logger_;
 };
 
 
@@ -345,7 +396,7 @@ inline std::vector<status> wait_all(std::vector<request>& req)
  * for our purposes. As the class or object goes out of scope, the communicator
  * is freed.
  */
-class communicator {
+class communicator : public EnableSharedPtrLogging<communicator> {
 public:
     /**
      * Non-owning constructor for an existing communicator of type MPI_Comm. The
@@ -457,9 +508,19 @@ public:
     void send(const SendType* send_buffer, const int send_count,
               const int destination_rank, const int send_tag) const
     {
-        GKO_ASSERT_NO_MPI_ERRORS(
-            MPI_Send(send_buffer, send_count, type_impl<SendType>::get_type(),
-                     destination_rank, send_tag, this->get()));
+        auto type = type_impl<SendType>::get_type();
+        this->template log<
+            log::Logger::blocking_mpi_point_to_point_communication_started>(
+            "send", comm_.get(), reinterpret_cast<uintptr>(send_buffer),
+            send_count, type, -1, destination_rank, send_tag, nullptr);
+        GKO_ASSERT_NO_MPI_ERRORS(MPI_Send(send_buffer, send_count, type,
+                                          destination_rank, send_tag,
+                                          this->get()));
+        this->template log<
+            log::Logger::blocking_mpi_point_to_point_communication_completed>(
+            "send", comm_.get(), reinterpret_cast<uintptr>(send_buffer),
+            send_count, type, this->rank(), destination_rank, send_tag,
+            nullptr);
     }
 
     /**
@@ -477,7 +538,20 @@ public:
     request i_send(const SendType* send_buffer, const int send_count,
                    const int destination_rank, const int send_tag) const
     {
-        request req;
+        auto type = type_impl<SendType>::get_type();
+        request req([&](const request* req) {
+            this->template log<
+                log::Logger::
+                    non_blocking_mpi_point_to_point_communication_completed>(
+                "send", comm_.get(), reinterpret_cast<uintptr>(send_buffer),
+                send_count, type, this->rank(), destination_rank, send_tag,
+                req);
+        });
+        this->template log<
+            log::Logger::non_blocking_mpi_point_to_point_communication_started>(
+            "send", comm_.get(), reinterpret_cast<uintptr>(send_buffer),
+            send_count, type, this->rank(), destination_rank, send_tag,
+            nullptr);
         GKO_ASSERT_NO_MPI_ERRORS(
             MPI_Isend(send_buffer, send_count, type_impl<SendType>::get_type(),
                       destination_rank, send_tag, this->get(), req.get()));
@@ -499,6 +573,11 @@ public:
                 const int source_rank, const int recv_tag) const
     {
         status st;
+        auto type = type_impl<RecvType>::get_type();
+        this->template log<
+            log::Logger::blocking_mpi_point_to_point_communication_started>(
+            "send", comm_.get(), reinterpret_cast<uintptr>(recv_buffer),
+            recv_count, type, source_rank, -1, recv_tag, nullptr);
         GKO_ASSERT_NO_MPI_ERRORS(
             MPI_Recv(recv_buffer, recv_count, type_impl<RecvType>::get_type(),
                      source_rank, recv_tag, this->get(), st.get()));
