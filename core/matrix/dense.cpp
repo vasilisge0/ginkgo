@@ -117,6 +117,7 @@ namespace bccoo {
 
 
 GKO_REGISTER_OPERATION(get_default_block_size, bccoo::get_default_block_size);
+GKO_REGISTER_OPERATION(get_default_compression, bccoo::get_default_compression);
 
 
 }  // namespace bccoo
@@ -132,9 +133,25 @@ inline void conversion_helper(Bccoo<ValueType, IndexType>* result,
 {
     auto exec = source->get_executor();
 
-    bccoo::compression compression = bccoo::compression::block;
-    size_type block_size = 10;
-    exec->run(bccoo::make_get_default_block_size(&block_size));
+    //		bccoo::compression compression = bccoo::compression::block;
+    /*
+                    auto exec_master = exec->get_master();
+        bccoo::compression compression =
+                                    ((result->use_default_compression())?
+                                                    ((exec_master == exec)?
+                                                            bccoo::compression::element:
+                                                            bccoo::compression::block):
+                                                    result->get_compression());
+    */
+    bccoo::compression compression = result->get_compression();
+    if (result->use_default_compression()) {
+        exec->run(bccoo::make_get_default_compression(&compression));
+    }
+    //    size_type block_size = 10;
+    size_type block_size = result->get_block_size();
+    if (block_size == 0) {
+        exec->run(bccoo::make_get_default_block_size(&block_size));
+    }
     size_type num_stored_nonzeros = 0;
     exec->run(dense::make_count_nonzeros(source, &num_stored_nonzeros));
     size_type mem_size = 0;
