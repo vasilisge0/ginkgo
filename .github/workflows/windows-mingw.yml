@@ -33,7 +33,10 @@ jobs:
     steps:
     - name: Checkout the latest code (shallow clone)
       uses: actions/checkout@v2
-
+    - name: configure Pagefile
+      uses: al-cheb/configure-pagefile-action@v1.2
+      with:
+        disk-root: "C:"
     - name: Debug over SSH (tmate)
       uses: mxschmitt/action-tmate@v3.5
       if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.debug_enabled }}
