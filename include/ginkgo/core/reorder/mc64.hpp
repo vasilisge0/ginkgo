@@ -61,7 +61,11 @@ namespace gko {
 namespace reorder {
 
 
-enum class reordering_strategy { max_diagonal_product, max_diagonal_sum };
+enum class reordering_strategy {
+    max_diagonal_product,
+    max_diagonal_product_fast,
+    max_diagonal_sum
+};
 
 
 template <typename ValueType = default_precision, typename IndexType = int32>
@@ -116,7 +120,7 @@ public:
          * This parameter controls the goal of the permutation.
          */
         reordering_strategy GKO_FACTORY_PARAMETER_SCALAR(
-            strategy, reordering_strategy::max_diagonal_product);
+            strategy, reordering_strategy::max_diagonal_product_fast);
     };
     GKO_ENABLE_REORDERING_BASE_FACTORY(Mc64, parameters, Factory);
     GKO_ENABLE_BUILD_METHOD(Factory);

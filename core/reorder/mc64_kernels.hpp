@@ -65,7 +65,7 @@ namespace kernels {
         const IndexType* row_ptrs, const IndexType* col_idxs,             \
         const Array<ValueType>& workspace, Array<IndexType>& permutation, \
         Array<IndexType>& inv_permutation,                                \
-        std::list<IndexType>& unmatched_rows)
+        std::list<IndexType>& unmatched_rows, Array<IndexType>& parents)
 
 
 #define GKO_DECLARE_MC64_SHORTEST_AUGMENTING_PATH_KERNEL(ValueType, IndexType) \
@@ -78,12 +78,14 @@ namespace kernels {
         addressable_priority_queue<ValueType, IndexType, 2>& Q)
 
 
-#define GKO_DECLARE_MC64_COMPUTE_SCALING_KERNEL(ValueType, IndexType)   \
-    void compute_scaling(std::shared_ptr<const DefaultExecutor> exec,   \
-                         const matrix::Csr<ValueType, IndexType>* mtx,  \
-                         Array<remove_complex<ValueType>>& workspace,   \
-                         gko::reorder::reordering_strategy strategy,    \
-                         gko::matrix::Diagonal<ValueType>* row_scaling, \
+#define GKO_DECLARE_MC64_COMPUTE_SCALING_KERNEL(ValueType, IndexType)       \
+    void compute_scaling(std::shared_ptr<const DefaultExecutor> exec,       \
+                         const matrix::Csr<ValueType, IndexType>* mtx,      \
+                         const Array<remove_complex<ValueType>>& workspace, \
+                         const Array<IndexType>& permutation,               \
+                         const Array<IndexType>& parents,                   \
+                         gko::reorder::reordering_strategy strategy,        \
+                         gko::matrix::Diagonal<ValueType>* row_scaling,     \
                          gko::matrix::Diagonal<ValueType>* col_scaling)
 
 

@@ -90,16 +90,16 @@ void Mc64<ValueType, IndexType>::generate(
                                             parameters_.strategy));
 
     std::list<IndexType> unmatched_rows{};
-    exec->run(mc64::make_initial_matching(num_rows, row_ptrs, col_idxs,
-                                          workspace, permutation,
-                                          inv_permutation, unmatched_rows));
+    Array<IndexType> parents{exec, 5 * num_rows};
+    parents.fill(0);
+    exec->run(mc64::make_initial_matching(
+        num_rows, row_ptrs, col_idxs, workspace, permutation, inv_permutation,
+        unmatched_rows, parents));
 
     // exec->run(mc64::make_update_dual_vectors(num_rows, row_ptrs, col_idxs,
     // permutation, workspace));
 
-    Array<IndexType> parents{exec, 4 * num_rows};
     addressable_priority_queue<remove_complex<ValueType>, IndexType, 2> Q{};
-    parents.fill(-2);
     for (auto root : unmatched_rows) {
         exec->run(mc64::make_shortest_augmenting_path(
             num_rows, row_ptrs, col_idxs, workspace, permutation,
@@ -118,9 +118,9 @@ void Mc64<ValueType, IndexType>::generate(
             .get());
     row_scaling_->copy_from(DiagonalMatrix::create(exec, num_rows));
     col_scaling_->copy_from(DiagonalMatrix::create(exec, num_rows));
-    exec->run(
-        mc64::make_compute_scaling(mtx.get(), workspace, parameters_.strategy,
-                                   row_scaling_.get(), col_scaling_.get()));
+    exec->run(mc64::make_compute_scaling(
+        mtx.get(), workspace, permutation, parents, parameters_.strategy,
+        row_scaling_.get(), col_scaling_.get()));
 }
 
 
