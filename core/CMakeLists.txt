@@ -23,6 +23,7 @@ target_sources(ginkgo
     log/convergence.cpp
     log/logger.cpp
     log/record.cpp
+    log/solver_progress.cpp
     log/stream.cpp
     matrix/coo.cpp
     matrix/csr.cpp

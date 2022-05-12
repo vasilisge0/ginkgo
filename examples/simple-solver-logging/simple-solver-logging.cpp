@@ -112,13 +112,8 @@ int main(int argc, char* argv[])
     // file. We log all events except for all linop factory and polymorphic
     // object events. Events masks are group of events which are provided
     // for convenience.
-    std::shared_ptr<gko::log::Stream<ValueType>> stream_logger =
-        gko::log::Stream<ValueType>::create(
-            exec,
-            gko::log::Logger::all_events_mask ^
-                gko::log::Logger::linop_factory_events_mask ^
-                gko::log::Logger::polymorphic_object_events_mask,
-            std::cout);
+    std::shared_ptr<gko::log::SolverProgress<ValueType>> stream_logger =
+        gko::log::SolverProgress<ValueType>::create(exec, std::cout);
 
     // Add stream_logger to the executor
     exec->add_logger(stream_logger);
