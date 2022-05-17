@@ -162,18 +162,18 @@ protected:
         // Copy back results to gpu if necessary.
         if (is_gpu_executor) {
             const auto gpu_exec = this->get_executor();
-            auto gpu_perm = PermutationMatrix::create(gpu_exec, dim);
+            auto gpu_perm = gko::share(PermutationMatrix::create(gpu_exec, dim));
             gpu_perm->copy_from(permutation_.get());
-            permutation_ = gko::share(gpu_perm);
-            auto gpu_inv_perm = PermutationMatrix::create(gpu_exec, dim);
+            permutation_ = gpu_perm;
+            auto gpu_inv_perm = gko::share(PermutationMatrix::create(gpu_exec, dim));
             gpu_inv_perm->copy_from(inv_permutation_.get());
-            inv_permutation_ = gko::share(gpu_inv_perm);
-            auto gpu_row_scaling = DiagonalMatrix::create(gpu_exec, dim[0]);
+            inv_permutation_ = gpu_inv_perm;
+            auto gpu_row_scaling = gko::share(DiagonalMatrix::create(gpu_exec, dim[0]));
             gpu_row_scaling->copy_from(row_scaling_.get());
-            row_scaling_ = gko::share(gpu_row_scaling);
-            auto gpu_col_scaling = DiagonalMatrix::create(gpu_exec, dim[0]);
+            row_scaling_ = gpu_row_scaling;
+            auto gpu_col_scaling = gko::share(DiagonalMatrix::create(gpu_exec, dim[0]));
             gpu_col_scaling->copy_from(col_scaling_.get());
-            col_scaling_ = gko::share(gpu_col_scaling);
+            col_scaling_ = gpu_col_scaling;
         }
     }
 
