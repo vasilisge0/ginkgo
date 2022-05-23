@@ -47,7 +47,7 @@ namespace gko {
 namespace kernels {
 namespace dpcpp {
 /**
- * @brief The parallel ilu factorization namespace.
+ * @brief The parallel ILU factorization namespace.
  *
  * @ingroup factor
  */
