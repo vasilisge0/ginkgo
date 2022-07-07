@@ -30,44 +30,52 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ******************************<GINKGO LICENSE>*******************************/
 
-#ifndef GKO_CORE_FACTORIZATION_ELIMINATION_FOREST_HPP_
-#define GKO_CORE_FACTORIZATION_ELIMINATION_FOREST_HPP_
+#include "core/factorization/arrow_lu_kernels.hpp"
 
 
-#include <ginkgo/core/base/array.hpp>
-#include <ginkgo/core/base/temporary_clone.hpp>
+#include <algorithm>
+#include <memory>
+
+
 #include <ginkgo/core/matrix/csr.hpp>
 
 
-#include "core/components/disjoint_sets.hpp"
+#include "core/components/fill_array_kernels.hpp"
+#include "hip/base/hipsparse_bindings.hip.hpp"
+#include "hip/base/math.hip.hpp"
+#include "hip/components/cooperative_groups.hip.hpp"
+#include "hip/components/intrinsics.hip.hpp"
+#include "hip/components/reduction.hip.hpp"
+#include "hip/components/thread_ids.hip.hpp"
+// #include "core/factorization/arrow_matrix.hpp"
 
 
 namespace gko {
-namespace factorization {
+namespace kernels {
+namespace hip {
+/**
+ * @brief The ArrowLu namespace.
+ *
+ * @ingroup factor
+ */
+namespace arrow_lu {
 
 
-template <typename IndexType>
-struct elimination_forest {
-    elimination_forest(std::shared_ptr<const Executor> host_exec,
-                       IndexType size);
-
-    void set_executor(std::shared_ptr<const Executor> exec);
-
-    array<IndexType> parents;
-    array<IndexType> child_ptrs;
-    array<IndexType> children;
-    array<IndexType> postorder;
-    array<IndexType> inv_postorder;
-    array<IndexType> postorder_parents;
-};
+constexpr int default_block_size = 512;
 
 template <typename ValueType, typename IndexType>
-elimination_forest<IndexType> compute_elim_forest(
-    const matrix::Csr<ValueType, IndexType>* mtx);
+void compute_factors(
+    std::shared_ptr<const DefaultExecutor> exec,
+    matrix::Csr<ValueType, IndexType>* global_mtx,
+    gko::factorization::arrow_lu_workspace<ValueType, IndexType>* workspace)
+    GKO_NOT_IMPLEMENTED;
 
+// GKO_ENABLE_IMPLEMENTATION_SELECTION(select_compute_factors, compute_factors);
 
-}  // namespace factorization
+GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
+    GKO_DECLARE_ARROW_LU_COMPUTE_FACTORS_KERNEL);
+
+}  // namespace arrow_lu
+}  // namespace hip
+}  // namespace kernels
 }  // namespace gko
-
-
-#endif  // GKO_CORE_FACTORIZATION_ELIMINATION_FOREST_HPP_

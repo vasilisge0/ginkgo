@@ -30,44 +30,61 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ******************************<GINKGO LICENSE>*******************************/
 
-#ifndef GKO_CORE_FACTORIZATION_ELIMINATION_FOREST_HPP_
-#define GKO_CORE_FACTORIZATION_ELIMINATION_FOREST_HPP_
+#ifndef GKO_CORE_MATRIX_CSR_BUILDER_HPP_
+#define GKO_CORE_MATRIX_CSR_BUILDER_HPP_
 
 
-#include <ginkgo/core/base/array.hpp>
-#include <ginkgo/core/base/temporary_clone.hpp>
-#include <ginkgo/core/matrix/csr.hpp>
-
-
-#include "core/components/disjoint_sets.hpp"
+#include <ginkgo/core/matrix/arrow.hpp>
 
 
 namespace gko {
-namespace factorization {
+namespace matrix {
 
 
-template <typename IndexType>
-struct elimination_forest {
-    elimination_forest(std::shared_ptr<const Executor> host_exec,
-                       IndexType size);
+/**
+ * @internal
+ *
+ * Allows intrusive access to the arrays stored within a @ref Arrow matrix.
+ *
+ * @tparam ValueType  the value type of the matrix
+ * @tparam IndexType  the index type of the matrix
+ */
+template <typename ValueType = default_precision, typename IndexType = int32>
+class ArrowBuilder {
+public:
+    /**
+     * Returns the column index array of the CSR matrix.
+     */
+    array<IndexType>& get_col_idx_array() { return matrix_->col_idxs_; }
 
-    void set_executor(std::shared_ptr<const Executor> exec);
+    /**
+     * Returns the value array of the CSR matrix.
+     */
+    array<ValueType>& get_value_array() { return matrix_->values_; }
 
-    array<IndexType> parents;
-    array<IndexType> child_ptrs;
-    array<IndexType> children;
-    array<IndexType> postorder;
-    array<IndexType> inv_postorder;
-    array<IndexType> postorder_parents;
+    /**
+     * Initializes a ArrowBuilder from an existing CSR matrix.
+     */
+    explicit ArrowBuilder(Arrow<ValueType, IndexType>* matrix) : matrix_{matrix}
+    {}
+
+    /**
+     * Updates the internal matrix data structures at destruction.
+     */
+    ~ArrowBuilder() { matrix_->make_srow(); }
+
+    // make this type non-movable
+    ArrowBuilder(const ArrowBuilder&) = delete;
+    ArrowBuilder(ArrowBuilder&&) = delete;
+    ArrowBuilder& operator=(const ArrowBuilder&) = delete;
+    ArrowBuilder& operator=(ArrowBuilder&&) = delete;
+
+private:
+    Arrow<ValueType, IndexType>* matrix_;
 };
 
-template <typename ValueType, typename IndexType>
-elimination_forest<IndexType> compute_elim_forest(
-    const matrix::Csr<ValueType, IndexType>* mtx);
 
-
-}  // namespace factorization
+}  // namespace matrix
 }  // namespace gko
 
-
-#endif  // GKO_CORE_FACTORIZATION_ELIMINATION_FOREST_HPP_
+#endif  // GKO_CORE_MATRIX_CSR_BUILDER_HPP_

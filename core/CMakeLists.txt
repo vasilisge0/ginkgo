@@ -20,6 +20,8 @@ target_sources(ginkgo
     factorization/par_ict.cpp
     factorization/par_ilu.cpp
     factorization/par_ilut.cpp
+    factorization/arrow_matrix.cpp
+    factorization/arrow_lu.cpp
     log/convergence.cpp
     log/logger.cpp
     log/record.cpp

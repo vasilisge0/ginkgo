@@ -16,6 +16,7 @@ target_sources(ginkgo_omp
     factorization/par_ict_kernels.cpp
     factorization/par_ilu_kernels.cpp
     factorization/par_ilut_kernels.cpp
+    factorization/arrow_lu_kernels.cpp
     matrix/coo_kernels.cpp
     matrix/csr_kernels.cpp
     matrix/dense_kernels.cpp

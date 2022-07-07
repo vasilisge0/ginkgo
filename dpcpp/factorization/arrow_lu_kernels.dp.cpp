@@ -30,44 +30,34 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ******************************<GINKGO LICENSE>*******************************/
 
-#ifndef GKO_CORE_FACTORIZATION_ELIMINATION_FOREST_HPP_
-#define GKO_CORE_FACTORIZATION_ELIMINATION_FOREST_HPP_
+#include <ginkgo/core/base/types.hpp>
+#include <ginkgo/core/factorization/arrow_lu.hpp>
 
 
-#include <ginkgo/core/base/array.hpp>
-#include <ginkgo/core/base/temporary_clone.hpp>
-#include <ginkgo/core/matrix/csr.hpp>
-
-
-#include "core/components/disjoint_sets.hpp"
+#include "core/factorization/arrow_lu_kernels.hpp"
+#include "core/factorization/arrow_matrix.hpp"
 
 
 namespace gko {
-namespace factorization {
-
-
-template <typename IndexType>
-struct elimination_forest {
-    elimination_forest(std::shared_ptr<const Executor> host_exec,
-                       IndexType size);
-
-    void set_executor(std::shared_ptr<const Executor> exec);
-
-    array<IndexType> parents;
-    array<IndexType> child_ptrs;
-    array<IndexType> children;
-    array<IndexType> postorder;
-    array<IndexType> inv_postorder;
-    array<IndexType> postorder_parents;
-};
+namespace kernels {
+namespace dpcpp {
+/**
+ * @brief The arrow_lu namespace.
+ *
+ * @ingroup factor
+ */
+namespace arrow_lu {
 
 template <typename ValueType, typename IndexType>
-elimination_forest<IndexType> compute_elim_forest(
-    const matrix::Csr<ValueType, IndexType>* mtx);
+void compute_factors(std::shared_ptr<const DefaultExecutor> exec,
+                     gko::matrix::Csr<ValueType, IndexType>* global_mtx,
+                     factorization::arrow_lu_workspace<ValueType, IndexType>*
+                         workspace) GKO_NOT_IMPLEMENTED;
 
+GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
+    GKO_DECLARE_ARROW_LU_COMPUTE_FACTORS_KERNEL);
 
-}  // namespace factorization
+}  // namespace arrow_lu
+}  // namespace dpcpp
+}  // namespace kernels
 }  // namespace gko
-
-
-#endif  // GKO_CORE_FACTORIZATION_ELIMINATION_FOREST_HPP_

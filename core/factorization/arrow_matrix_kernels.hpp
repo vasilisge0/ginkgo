@@ -30,44 +30,45 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ******************************<GINKGO LICENSE>*******************************/
 
-#ifndef GKO_CORE_FACTORIZATION_ELIMINATION_FOREST_HPP_
-#define GKO_CORE_FACTORIZATION_ELIMINATION_FOREST_HPP_
+#ifndef GKO_CORE_FACTORIZATION_BLOCK_ARROW_MATRIX_KERNELS_HPP_
+#define GKO_CORE_FACTORIZATION_BLOCK_ARROW_MATRIX_KERNELS_HPP_
 
 
-#include <ginkgo/core/base/array.hpp>
-#include <ginkgo/core/base/temporary_clone.hpp>
+#include <memory>
+
+
+#include <ginkgo/core/base/executor.hpp>
+#include <ginkgo/core/base/types.hpp>
 #include <ginkgo/core/matrix/csr.hpp>
 
 
-#include "core/components/disjoint_sets.hpp"
+#include "core/base/kernel_declaration.hpp"
+#include "core/factorization/block_arrow_matrix.hpp"
+#include "core/factorization/elimination_forest.hpp"
 
 
 namespace gko {
-namespace factorization {
+namespace kernels {
+
+#define GKO_DECLARE_BLOCK_ARROW_MATRIX_COMPUTE(ValueType, IndexType) \
+    void compute(std::shared_ptr<const Executor> exec,               \
+                 std::vector<std::string> filenames)
 
 
-template <typename IndexType>
-struct elimination_forest {
-    elimination_forest(std::shared_ptr<const Executor> host_exec,
-                       IndexType size);
+#define GKO_DECLARE_ALL_AS_TEMPLATES                  \
+    template <typename ValueType, typename IndexType> \
+    GKO_DECLARE_BLOCK_ARROW_MATRIX_COMPUTE(           \
+        std::shared_ptr<const Executor> exec,         \
+        std::vector<std::string> filenames);
 
-    void set_executor(std::shared_ptr<const Executor> exec);
+GKO_DECLARE_FOR_ALL_EXECUTOR_NAMESPACES(factorization,
+                                        GKO_DECLARE_ALL_AS_TEMPLATES);
 
-    array<IndexType> parents;
-    array<IndexType> child_ptrs;
-    array<IndexType> children;
-    array<IndexType> postorder;
-    array<IndexType> inv_postorder;
-    array<IndexType> postorder_parents;
-};
-
-template <typename ValueType, typename IndexType>
-elimination_forest<IndexType> compute_elim_forest(
-    const matrix::Csr<ValueType, IndexType>* mtx);
+#undef GKO_DECLARE_ALL_AS_TEMPLATES
 
 
-}  // namespace factorization
+}  // namespace kernels
 }  // namespace gko
 
 
-#endif  // GKO_CORE_FACTORIZATION_ELIMINATION_FOREST_HPP_
+#endif  // GKO_CORE_FACTORIZATION_BLOCK_ARROW_MATRIX_KERNELS_HPP_
