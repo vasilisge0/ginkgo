@@ -160,6 +160,7 @@ protected:
             parameters_.l_strategy =
                 std::make_shared<typename matrix_type::classical>();
         }
+        std::cout << "before generate workspace\n";
         generate_workspace(system_matrix);
         // using CsrMatrix = matrix::Csr<ValueType, IndexType>;
         // auto exec = factory->get_executor();

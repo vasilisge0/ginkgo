@@ -8,7 +8,6 @@
 namespace gko {
 namespace factorization {
 
-
 // arrow_matrix struct. This struct is used for managing data used by the
 // arrow_lu factorization and solve methods.
 
@@ -37,7 +36,7 @@ template <typename ValueType, typename IndexType>
 arrow_matrix<ValueType, IndexType>::arrow_matrix(
     std::shared_ptr<matrix::Csr<ValueType, IndexType>> mtx,
     arrow_partitions<IndexType>& partitions)
-    : partitions_(partition_idxs),
+    : partitions_(partitions),
       submtx_11_(mtx, partitions_),
       submtx_12_(mtx, submtx_11_, partitions_),
       submtx_21_(mtx, submtx_11_, partitions_),
@@ -79,9 +78,10 @@ arrow_submatrix_11<ValueType, IndexType>::arrow_submatrix_11(
     split_index = partitions.split_index;
     num_blocks = partitions.num_endpoints - 1;
     row_ptrs_tmp = array<IndexType>(exec, partitions.split_index + 1);
-    dense_l_factors = {exec, static_cast<size_type>(num_blocks)};
-    dense_u_factors = {exec, static_cast<size_type>(num_blocks)};
-    dense_diagonal_blocks = {exec, static_cast<size_type>(num_blocks)};
+    std::cout << "num_blocks: " << num_blocks << '\n';
+    dense_l_factors.reserve(num_blocks);
+    dense_u_factors.reserve(num_blocks);
+    dense_diagonal_blocks.reserve(num_blocks);
 }
 
 #define GKO_DECLARE_ARROW_SUBMATRIX_11_CONSTRUCTOR_KERNEL(ValueType,   \
@@ -92,6 +92,25 @@ arrow_submatrix_11<ValueType, IndexType>::arrow_submatrix_11(
 
 GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
     GKO_DECLARE_ARROW_SUBMATRIX_11_CONSTRUCTOR_KERNEL);
+
+
+template <typename ValueType, typename IndexType>
+arrow_submatrix_11<ValueType, IndexType> compute_arrow_submatrix_11(
+    std::shared_ptr<matrix::Csr<ValueType, IndexType>> global_mtx,
+    arrow_partitions<IndexType>& partitions)
+{
+    auto submtx_11 =
+        arrow_submatrix_11<ValueType, IndexType>(global_mtx, partitions);
+    return submtx_11;
+}
+
+#define GKO_DECLARE_COMPUTE_ARROW_SUBMATRIX_11_KERNEL(ValueType, IndexType) \
+    arrow_submatrix_11<ValueType, IndexType> compute_arrow_submatrix_11(    \
+        std::shared_ptr<matrix::Csr<ValueType, IndexType>> global_mtx,      \
+        arrow_partitions<IndexType>& partitions);
+
+GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
+    GKO_DECLARE_COMPUTE_ARROW_SUBMATRIX_11_KERNEL)
 
 
 // arrow_submatrix_12 struct. Manages entries in (1, 2) sub-block (1-indexing)
@@ -151,6 +170,46 @@ arrow_submatrix_21<ValueType, IndexType>::arrow_submatrix_21(
     nz_per_block.fill(0);
 }
 
+template <typename ValueType, typename IndexType>
+arrow_submatrix_21<ValueType, IndexType> compute_arrow_submatrix_21(
+    std::shared_ptr<matrix::Csr<ValueType, IndexType>> global_mtx,
+    arrow_submatrix_11<ValueType, IndexType>& submtx_11,
+    arrow_partitions<IndexType>& partitions)
+{
+    auto submtx_21 = arrow_submatrix_21<ValueType, IndexType>(
+        global_mtx, submtx_11, partitions);
+    return submtx_21;
+}
+
+#define GKO_DECLARE_COMPUTE_ARROW_SUBMATRIX_21_KERNEL(ValueType, IndexType) \
+    arrow_submatrix_21<ValueType, IndexType> compute_arrow_submatrix_21(    \
+        std::shared_ptr<matrix::Csr<ValueType, IndexType>> global_mtx,      \
+        arrow_submatrix_11<ValueType, IndexType>& submtx_11,                \
+        arrow_partitions<IndexType>& partitions);
+
+GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
+    GKO_DECLARE_COMPUTE_ARROW_SUBMATRIX_21_KERNEL)
+
+template <typename ValueType, typename IndexType>
+arrow_submatrix_12<ValueType, IndexType> compute_arrow_submatrix_12(
+    std::shared_ptr<matrix::Csr<ValueType, IndexType>> global_mtx,
+    arrow_submatrix_11<ValueType, IndexType>& submtx_11,
+    arrow_partitions<IndexType>& partitions)
+{
+    auto submtx_12 = arrow_submatrix_12<ValueType, IndexType>(
+        global_mtx, submtx_11, partitions);
+    return submtx_12;
+}
+
+#define GKO_DECLARE_COMPUTE_ARROW_SUBMATRIX_12_KERNEL(ValueType, IndexType) \
+    arrow_submatrix_12<ValueType, IndexType> compute_arrow_submatrix_12(    \
+        std::shared_ptr<matrix::Csr<ValueType, IndexType>> global_mtx,      \
+        arrow_submatrix_11<ValueType, IndexType>& submtx_11,                \
+        arrow_partitions<IndexType>& partitions);
+
+GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
+    GKO_DECLARE_COMPUTE_ARROW_SUBMATRIX_12_KERNEL)
+
 // arrow_submatrix_22. Manages entries in (1, 2) sub-block (1-indexing) of
 // global_mtx.
 
@@ -185,23 +244,102 @@ arrow_submatrix_22<ValueType, IndexType>::arrow_submatrix_22(
         exec, size, std::move(values_l_t), stride);
 }
 
+#define GKO_DECLARE_ARROW_SUBMATRIX_22_CONSTRUCTOR0_KERNEL(ValueType,  \
+                                                           IndexType)  \
+    arrow_submatrix_22<ValueType, IndexType>::arrow_submatrix_22(      \
+        std::shared_ptr<matrix::Csr<ValueType, IndexType>> global_mtx, \
+        arrow_submatrix_11<ValueType, IndexType>& submtx_11,           \
+        arrow_submatrix_12<ValueType, IndexType>& submtx_12,           \
+        arrow_submatrix_21<ValueType, IndexType>& submtx_21,           \
+        arrow_partitions<IndexType>& partitions);
+
+GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
+    GKO_DECLARE_ARROW_SUBMATRIX_22_CONSTRUCTOR0_KERNEL)
+
 // move constructor
 template <typename ValueType, typename IndexType>
 arrow_submatrix_22<ValueType, IndexType>::arrow_submatrix_22(
-    arrow_submatrix_22& input)
+    const arrow_submatrix_22<ValueType, IndexType>& input)
     : schur_complement(std::move(input.schur_complement)),
       dense_u_factor(std::move(input.dense_l_factor)),
       dense_l_factor(std::move(input.dense_u_factor)),
+      exec(input.exec),
       split_index(input.split_index),
       size(input.size)
 {}
 
+#define GKO_DECLARE_ARROW_SUBMATRIX_22_CONSTRUCTOR1_KERNEL(ValueType, \
+                                                           IndexType) \
+    arrow_submatrix_22<ValueType, IndexType>::arrow_submatrix_22(     \
+        const arrow_submatrix_22<ValueType, IndexType>& input);
+
+GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
+    GKO_DECLARE_ARROW_SUBMATRIX_22_CONSTRUCTOR1_KERNEL)
+
+template <typename ValueType, typename IndexType>
+arrow_submatrix_22<ValueType, IndexType> compute_arrow_submatrix_22(
+    std::shared_ptr<matrix::Csr<ValueType, IndexType>> global_mtx,
+    arrow_submatrix_11<ValueType, IndexType>& submtx_11,
+    arrow_submatrix_12<ValueType, IndexType>& submtx_12,
+    arrow_submatrix_21<ValueType, IndexType>& submtx_21,
+    arrow_partitions<IndexType>& partitions)
+{
+    auto submtx_22 = arrow_submatrix_22<ValueType, IndexType>(
+        global_mtx, submtx_11, submtx_12, submtx_21, partitions);
+    return submtx_22;
+}
+
+#define GKO_DECLARE_COMPUTE_ARROW_SUBMATRIX_22_KERNEL(ValueType, IndexType) \
+    arrow_submatrix_22<ValueType, IndexType> compute_arrow_submatrix_22(    \
+        std::shared_ptr<matrix::Csr<ValueType, IndexType>> global_mtx,      \
+        arrow_submatrix_11<ValueType, IndexType>& submtx_11,                \
+        arrow_submatrix_12<ValueType, IndexType>& submtx_12,                \
+        arrow_submatrix_21<ValueType, IndexType>& submtx_21,                \
+        arrow_partitions<IndexType>& partitions);
+
+GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
+    GKO_DECLARE_COMPUTE_ARROW_SUBMATRIX_22_KERNEL)
+
+
 // arrow_partitions struct. A wrapper on top of gko::array.
+
+template <typename IndexType>
+arrow_partitions<IndexType>::arrow_partitions(
+    const arrow_partitions<IndexType>& partitions_in)
+{
+    split_index = partitions_in.split_index;
+    num_endpoints = partitions_in.num_endpoints;
+    size = partitions_in.size;
+    data = std::move(partitions_in.data);
+}
 
 
 template <typename IndexType>
 arrow_partitions<IndexType>::arrow_partitions()
 {}
+
+#define GKO_DECLARE_ARROW_PARTITIONS_CONSTRUCTOR0_KERNEL(IndexType) \
+    arrow_partitions<IndexType>::arrow_partitions();
+
+GKO_INSTANTIATE_FOR_EACH_INDEX_TYPE(
+    GKO_DECLARE_ARROW_PARTITIONS_CONSTRUCTOR0_KERNEL);
+
+template <typename IndexType>
+arrow_partitions<IndexType> compute_partitions(
+    gko::array<IndexType>* partitions_in, IndexType split_index)
+{
+    // auto partitions = arrow_partitions<IndexType>();
+    std::cout << "in compute_partitions\n";
+    arrow_partitions<IndexType> partitions(partitions_in, split_index);
+    std::cout << "beore return\n";
+    return partitions;
+}
+
+#define GKO_DECLARE_COMPUTE_PARTITIONS_KERNEL(IndexType) \
+    arrow_partitions<IndexType> compute_partitions(      \
+        gko::array<IndexType>* partitions_in, IndexType split_index)
+
+GKO_INSTANTIATE_FOR_EACH_INDEX_TYPE(GKO_DECLARE_COMPUTE_PARTITIONS_KERNEL);
 
 template <typename IndexType>
 arrow_partitions<IndexType>::arrow_partitions(arrow_partitions<IndexType>& in)
@@ -235,7 +373,7 @@ arrow_partitions<IndexType>::arrow_partitions(
     // find num_endpoints
     auto tmp = data.get_data()[0];
     auto index = 0;
-    while (tmp <= split_index) {
+    while (tmp < split_index) {
         index += 1;
         // tmp = data.get_data()[index];
     }
@@ -256,12 +394,72 @@ arrow_partitions<IndexType>::arrow_partitions(
     size = {data.get_num_elems(), 1};
     auto tmp = data.get_data()[0];
     auto index = 0;
-    while (tmp <= split_index) {
+    while (tmp < split_index) {
         index += 1;
         tmp = data.get_data()[index];
     }
-    num_endpoints = index - 1;
+    num_endpoints = index + 1;
 }
+
+#define GKO_DECLARE_ARROW_PARTITIONS_CONSTRUCTOR2_KERNEL(IndexType) \
+    arrow_partitions<IndexType>::arrow_partitions(                  \
+        gko::array<IndexType>& partition_idxs, IndexType split_index_in)
+
+GKO_INSTANTIATE_FOR_EACH_INDEX_TYPE(
+    GKO_DECLARE_ARROW_PARTITIONS_CONSTRUCTOR2_KERNEL);
+
+template <typename IndexType>
+arrow_partitions<IndexType>::arrow_partitions(
+    gko::array<IndexType>* partition_idxs, IndexType split_index_in)
+{
+    // exec = partition_idxs.get_executor();
+    data = std::move(*partition_idxs);
+    split_index = split_index_in;
+    size = {data.get_num_elems(), 1};
+    auto tmp = data.get_data()[0];
+    auto index = 0;
+    std::cout << " (init) tmp: " << tmp << '\n';
+    std::cout << "split_index: " << split_index << '\n';
+    while (tmp < split_index) {
+        index += 1;
+        tmp = data.get_data()[index];
+    }
+    num_endpoints = index + 1;
+}
+
+#define GKO_DECLARE_ARROW_PARTITIONS_CONSTRUCTOR00_KERNEL(IndexType) \
+    arrow_partitions<IndexType>::arrow_partitions(                   \
+        gko::array<IndexType>* partition_idxs, IndexType split_index_in)
+
+GKO_INSTANTIATE_FOR_EACH_INDEX_TYPE(
+    GKO_DECLARE_ARROW_PARTITIONS_CONSTRUCTOR00_KERNEL);
+
+template <typename IndexType>
+arrow_partitions<IndexType>::arrow_partitions(
+    std::unique_ptr<gko::array<IndexType>> partition_idxs,
+    IndexType split_index_in)
+{
+    // exec = partition_idxs.get_executor();
+    data = std::move(*(partition_idxs.get()));
+    split_index = split_index_in;
+    size = {data.get_num_elems(), 1};
+    auto tmp = data.get_data()[0];
+    auto index = 0;
+    while (tmp < split_index) {
+        index += 1;
+        tmp = data.get_data()[index];
+    }
+    num_endpoints = index + 1;
+}
+
+#define GKO_DECLARE_ARROW_PARTITIONS_CONSTRUCTOR3_KERNEL(IndexType) \
+    arrow_partitions<IndexType>::arrow_partitions(                  \
+        std::unique_ptr<gko::array<IndexType>> partition_idxs,      \
+        IndexType split_index_in)
+
+GKO_INSTANTIATE_FOR_EACH_INDEX_TYPE(
+    GKO_DECLARE_ARROW_PARTITIONS_CONSTRUCTOR3_KERNEL);
+
 
 // #define GKO_DECLARE_ARROW_PARTITIONS_CONSTRUCTOR2_KERNEL(IndexType) \
 //     arrow_partitions<IndexType>::arrow_partitions(gko::array<IndexType> partition_idxs, \

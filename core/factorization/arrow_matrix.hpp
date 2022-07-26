@@ -42,6 +42,55 @@ struct arrow_submatrix_21;
 template <typename ValueType, typename IndexType>
 struct arrow_submatrix_22;
 
+template <typename IndexType>
+struct block_csr_storage {
+    IndexType num_elems;
+    IndexType num_blocks;
+    array<IndexType> rows;
+    array<IndexType> row_ptrs;
+    array<IndexType> block_ptrs;
+
+    block_csr_storage() {}
+
+    block_csr_storage(std::shared_ptr<const Executor> exec,
+                      IndexType num_elems_in, IndexType num_blocks_in)
+    {
+        num_elems = num_elems_in;
+        num_blocks_in = num_blocks_in;
+        array<IndexType> rows = {exec, num_elems};
+        array<IndexType> row_ptrs = {exec, num_elems};
+        array<IndexType> block_ptrs = {exec, num_blocks};
+    }
+
+    block_csr_storage(array<IndexType>& rows_in, array<IndexType>& row_ptrs_in,
+                      array<IndexType>& block_ptrs_in)
+    {
+        num_elems = rows_in.get_num_elems();
+        num_blocks = block_ptrs.get_num_elems();
+        rows = std::move(rows_in);
+        row_ptrs = std::move(row_ptrs_in);
+        block_ptrs = std::move(block_ptrs_in);
+    }
+
+    block_csr_storage(std::shared_ptr<const Executor> exec,
+                      IndexType num_elems_in, IndexType num_blocks_in,
+                      IndexType* rows_in, IndexType* row_ptrs_in,
+                      IndexType* block_row_ptrs_in)
+    {
+        num_elems = num_elems_in;
+        num_blocks = num_blocks_in;
+        rows = {exec, static_cast<size_type>(num_elems), rows_in};
+        row_ptrs = {exec, static_cast<size_type>(num_elems), row_ptrs_in};
+        row_ptrs = {exec, static_cast<size_type>(num_elems), row_ptrs_in};
+        block_ptrs = {exec, static_cast<size_type>(num_blocks_in) + 1,
+                      block_row_ptrs_in};
+    }
+
+    void reset_block_ptrs();
+
+    void resize();
+};
+
 
 // Declaration of arrow_partitions struct.
 
@@ -59,6 +108,11 @@ public:
                      std::ifstream& infile);
     arrow_partitions(gko::array<IndexType>& partition_idxs,
                      IndexType split_index_in);
+    arrow_partitions(gko::array<IndexType>* partition_idxs,
+                     IndexType split_index_in);
+    arrow_partitions(std::unique_ptr<gko::array<IndexType>> partition_idxs,
+                     IndexType split_index_in);
+    arrow_partitions(const arrow_partitions& partitions_in);
 
     void read(std::ifstream& infile);
     IndexType* get_data();
@@ -107,10 +161,10 @@ struct arrow_submatrix_11 {
     IndexType nnz_u_factor = IndexType{};
     IndexType split_index = IndexType{};
     array<IndexType> row_ptrs_tmp;
-    array<std::unique_ptr<dense_mtx>> dense_l_factors;
-    array<std::unique_ptr<dense_mtx>> dense_u_factors;
-    array<std::unique_ptr<dense_mtx>> dense_diagonal_blocks;
-    array<csr_mtx> sparse_diagonal_blocks;
+    std::vector<std::unique_ptr<dense_mtx>> dense_l_factors;
+    std::vector<std::unique_ptr<dense_mtx>> dense_u_factors;
+    std::vector<std::unique_ptr<dense_mtx>> dense_diagonal_blocks;
+    std::vector<std::unique_ptr<csr_mtx>> sparse_diagonal_blocks;
 
     arrow_submatrix_11(
         std::shared_ptr<matrix::Csr<ValueType, IndexType>> global_mtx,
@@ -163,9 +217,7 @@ struct arrow_submatrix_21 {
     std::shared_ptr<csr_mtx> mtx;
     array<IndexType> block_col_ptrs;
     array<IndexType> nz_per_block;
-    array<IndexType> row_list_local;  // get num_rows_per_block by subtracting.
-    array<IndexType> row_ptrs_local;
-    array<IndexType> row_list_local_ptrs;
+    std::shared_ptr<block_csr_storage<IndexType>> block_storage;
 
     arrow_submatrix_21(
         std::shared_ptr<matrix::Csr<ValueType, IndexType>> global_mtx,
@@ -181,10 +233,9 @@ struct arrow_submatrix_22 {
     std::shared_ptr<const Executor> exec = nullptr;
     dim<2> size;
     IndexType split_index;
-    std::unique_ptr<dense_mtx> schur_complement;
-    std::unique_ptr<dense_mtx> dense_l_factor;
-    std::unique_ptr<dense_mtx> dense_u_factor;
-    arrow_lu_type solver_type = arrow_lu_sequential;
+    std::shared_ptr<dense_mtx> schur_complement;
+    std::shared_ptr<dense_mtx> dense_l_factor;
+    std::shared_ptr<dense_mtx> dense_u_factor;
 
     arrow_submatrix_22(
         std::shared_ptr<matrix::Csr<ValueType, IndexType>> global_mtx,
@@ -193,7 +244,7 @@ struct arrow_submatrix_22 {
         arrow_submatrix_21<ValueType, IndexType>& submtx_21,
         arrow_partitions<IndexType>& partitions);
 
-    arrow_submatrix_22(arrow_submatrix_22<ValueType, IndexType>& input);
+    arrow_submatrix_22(const arrow_submatrix_22<ValueType, IndexType>& input);
 };
 
 template <typename IndexType>
@@ -244,6 +295,35 @@ struct arrow_lu_workspace {
     arrow_matrix<ValueType, IndexType>* get_mtx() {}
     arrow_partitions<IndexType>* get_partitions() {}
 };
+
+template <typename IndexType>
+arrow_partitions<IndexType> compute_partitions(
+    gko::array<IndexType>* partitions_in, IndexType split_index);
+
+template <typename ValueType, typename IndexType>
+arrow_submatrix_11<ValueType, IndexType> compute_arrow_submatrix_11(
+    std::shared_ptr<matrix::Csr<ValueType, IndexType>> global_mtx,
+    arrow_partitions<IndexType>& partitions);
+
+template <typename ValueType, typename IndexType>
+arrow_submatrix_12<ValueType, IndexType> compute_arrow_submatrix_12(
+    std::shared_ptr<matrix::Csr<ValueType, IndexType>> global_mtx,
+    arrow_submatrix_11<ValueType, IndexType>& submtx_11,
+    arrow_partitions<IndexType>& partitions);
+
+template <typename ValueType, typename IndexType>
+arrow_submatrix_21<ValueType, IndexType> compute_arrow_submatrix_21(
+    std::shared_ptr<matrix::Csr<ValueType, IndexType>> global_mtx,
+    arrow_submatrix_11<ValueType, IndexType>& submtx_11,
+    arrow_partitions<IndexType>& partitions);
+
+template <typename ValueType, typename IndexType>
+arrow_submatrix_22<ValueType, IndexType> compute_arrow_submatrix_22(
+    std::shared_ptr<matrix::Csr<ValueType, IndexType>> global_mtx,
+    arrow_submatrix_11<ValueType, IndexType>& submtx_11,
+    arrow_submatrix_12<ValueType, IndexType>& submtx_12,
+    arrow_submatrix_21<ValueType, IndexType>& submtx_21,
+    arrow_partitions<IndexType>& partitions);
 
 }  // namespace factorization
 }  // namespace gko

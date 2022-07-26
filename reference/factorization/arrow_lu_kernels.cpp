@@ -4,7 +4,6 @@
 #include "core/factorization/arrow_lu_kernels.hpp"
 #include "core/factorization/arrow_matrix.hpp"
 
-
 namespace gko {
 namespace kernels {
 namespace reference {
@@ -14,7 +13,6 @@ namespace reference {
  * @ingroup factor
  */
 namespace arrow_lu {
-
 
 // Checks rows row_start, ..., row_end of submatrix_12 and returns the entry
 // (row_min_out, col_min_out) as well as the number of entries with the same
@@ -156,7 +154,7 @@ void factorize_submatrix_12(
 {
     step_1_impl_symbolic_count(global_mtx, submtx_12, partitions);
 
-    // Allocate mtx.
+    // Allocates submtx_12.mtx.
     auto nnzs = static_cast<size_type>(submtx_12.nz);
     auto exec = submtx_12.exec;
     auto size = submtx_12.size;
@@ -167,7 +165,6 @@ void factorize_submatrix_12(
         exec, size, std::move(values_tmp), std::move(col_idxs_tmp),
         std::move(row_ptrs_tmp)));
     step_2_impl_assemble(global_mtx, submtx_12, partitions);
-
 
     // Applies triangular solves on arrow_submatrix_21 using the diagonal
     // blocks, stored in arrow_submatrix_11.
@@ -193,14 +190,15 @@ void factorize_submatrix_21(
     auto size = submtx_21.size;
     dim<2> size_tmp = {size[1], size[0]};
     auto col_ptrs_tmp = array<IndexType>(exec, size[1] + 1);
-    col_ptrs_tmp.fill(0);
     auto row_idxs_tmp = array<IndexType>(exec, nnzs);
-    row_idxs_tmp.fill(0);
     auto values_tmp = array<ValueType>(exec, nnzs);
+    col_ptrs_tmp.fill(0);
+    row_idxs_tmp.fill(0);
     values_tmp.fill(0.0);
     submtx_21.mtx = share(matrix::Csr<ValueType, IndexType>::create(
         exec, size_tmp, std::move(values_tmp), std::move(row_idxs_tmp),
         std::move(col_ptrs_tmp)));
+    std::cout << "submtx_21.nz: " << submtx_21.nz << '\n';
     step_2_impl_assemble(global_mtx, submtx_21, partitions);
 
     // applies triangular solves on arrow_submatrix_21 using the diagonal
@@ -251,7 +249,6 @@ void compute_factors(
 GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
     GKO_DECLARE_ARROW_LU_COMPUTE_FACTORS_KERNEL);
 
-
 // Step 1 for computing LU factors of submatrix_11. Initializes the dense
 // diagonal blocks of submatrix_11.
 template <typename ValueType, typename IndexType>
@@ -265,31 +262,36 @@ void step_1_impl_assemble(
     auto partition_idxs = partitions.data.get_data();
     using dense = matrix::Dense<ValueType>;
     auto num_blocks = submtx_11.num_blocks;
-    array<array<ValueType>> l_factor_values_array =
-        array<array<ValueType>>(exec, num_blocks);
-    array<array<ValueType>> u_factor_values_array =
-        array<array<ValueType>>(exec, num_blocks);
-
-    for (auto block = 0; block < num_blocks; ++block) {
-        auto len = static_cast<size_type>(partition_idxs[block + 1] -
-                                          partition_idxs[block]);
-        const dim<2> block_size = {len, len};
-        auto values_array = l_factor_values_array.get_data()[block];
-        values_array = array<ValueType>(exec, block_size[0] * block_size[1]);
-        values_array.fill(0);
-        submtx_11.dense_l_factors.get_data()[block] =
-            dense::create(exec, block_size, std::move(values_array), stride);
+    auto l_factors = submtx_11.dense_l_factors.begin();
+    for (auto block = 0; block < num_blocks; block++) {
+        auto block_length = static_cast<size_type>(partition_idxs[block + 1] -
+                                                   partition_idxs[block]);
+        const dim<2> block_size = {block_length, block_length};
+        // l_factors[block] = dense::create(exec, block_size, stride);
+        {
+            auto tmp_array =
+                array<ValueType>(exec, block_size[0] * block_size[1]);
+            tmp_array.fill(0.0);
+            submtx_11.dense_l_factors.push_back(std::move(
+                dense::create(exec, block_size, std::move(tmp_array), stride)));
+        }
     }
 
-    for (auto block = 0; block < num_blocks; ++block) {
+    auto u_factors = submtx_11.dense_l_factors.begin();
+    for (auto block = 0; block < num_blocks; block++) {
         auto len = static_cast<size_type>(partition_idxs[block + 1] -
                                           partition_idxs[block]);
         const dim<2> block_size = {len, len};
-        auto values_array = u_factor_values_array.get_data()[block];
-        values_array = array<ValueType>(exec, block_size[0] * block_size[1]);
-        values_array.fill(0);
-        submtx_11.dense_u_factors.get_data()[block] =
-            dense::create(exec, block_size, std::move(values_array), stride);
+        {
+            auto tmp_array =
+                array<ValueType>(exec, block_size[0] * block_size[1]);
+            tmp_array.fill(0.0);
+            submtx_11.dense_u_factors.push_back(std::move(
+                dense::create(exec, block_size, std::move(tmp_array), stride)));
+        }
+        // submtx_11.dense_u_factors.push_back(std::move(dense::create(exec,
+        // block_size, stride)));
+        // submtx_11.dense_u_factors[block].get()->fill(0.0);
     }
 }
 
@@ -305,38 +307,40 @@ void step_2_impl_factorize(
     factorization::arrow_partitions<IndexType>& partitions)
 {
     using dense = matrix::Dense<ValueType>;
-    auto exec = submtx_11.exec;
-    const auto partition_idxs = partitions.get_const_data();
-    auto row_ptrs = submtx_11.row_ptrs_tmp.get_data();
-    const auto col_idxs = global_mtx->get_const_col_idxs();
-    const auto values = global_mtx->get_const_values();
+    const auto exec = submtx_11.exec;
     const auto stride = 1;
-    IndexType nnz_l_factor = 0;
-    IndexType nnz_u_factor = 0;
+    const auto partition_idxs = partitions.get_const_data();
+    const auto values = global_mtx->get_const_values();
+    const auto col_idxs = global_mtx->get_const_col_idxs();
+    auto row_ptrs = submtx_11.row_ptrs_tmp.get_data();
+    size_type nnz_l_factor = 0;
+    size_type nnz_u_factor = 0;
     exec->copy(submtx_11.split_index + 1, global_mtx->get_const_row_ptrs(),
                row_ptrs);
     for (auto block = 0; block < submtx_11.num_blocks; block++) {
-        const auto len = static_cast<size_type>(partition_idxs[block + 1] -
-                                                partition_idxs[block]);
-        const auto num_elems_dense = static_cast<size_type>(len * len);
-        dim<2> block_size = {len, len};
-        nnz_l_factor += (len * len + len) / 2;
-        nnz_u_factor += (len * len + len) / 2;
-        array<ValueType> values_tmp = {exec, num_elems_dense};
-        values_tmp.fill(0.0);
-        submtx_11.dense_diagonal_blocks.get_data()[block] =
-            dense::create(exec, block_size, std::move(values_tmp), stride);
-
-        auto dense_l_factor = submtx_11.dense_l_factors.get_data()[block].get();
-        auto dense_u_factor = submtx_11.dense_u_factors.get_data()[block].get();
-        auto dense_block =
-            submtx_11.dense_diagonal_blocks.get_data()[block].get();
+        const auto block_length = static_cast<size_type>(
+            partition_idxs[block + 1] - partition_idxs[block]);
+        const auto num_elems_dense =
+            static_cast<size_type>(block_length * block_length);
+        nnz_l_factor += (block_length * block_length + block_length) / 2;
+        nnz_u_factor += (block_length * block_length + block_length) / 2;
         auto row_start = partition_idxs[block];
         auto row_end = partition_idxs[block + 1];
-        convert_csr_2_dense<ValueType, IndexType>(block_size, row_ptrs,
-                                                  col_idxs, values, dense_block,
-                                                  row_start, row_end);
-        factorize_kernel(dense_block, dense_l_factor, dense_u_factor);
+        dim<2> block_size = {block_length, block_length};
+        {
+            auto tmp_array =
+                array<ValueType>(exec, block_size[0] * block_size[1]);
+            tmp_array.fill(0.0);
+            auto tmp =
+                dense::create(exec, block_size, std::move(tmp_array), stride);
+            submtx_11.dense_diagonal_blocks.push_back(std::move(tmp));
+        }
+        convert_csr_2_dense<ValueType, IndexType>(
+            block_size, row_ptrs, col_idxs, values,
+            submtx_11.dense_diagonal_blocks[block].get(), row_start, row_end);
+        factorize_kernel(submtx_11.dense_diagonal_blocks[block].get(),
+                         submtx_11.dense_l_factors[block].get(),
+                         submtx_11.dense_u_factors[block].get());
     }
     submtx_11.nnz_l_factor = nnz_l_factor;
     submtx_11.nnz_u_factor = nnz_u_factor;
@@ -397,10 +401,10 @@ void step_1_impl_symbolic_count(
             num_cols += 1;
             col_min = max_col;
         }
-        auto exec = global_mtx->get_executor();
-        auto num_elems = row_end - row_start;
-        exec->copy(num_elems, &row_ptrs_src[row_start + 1],
-                   &row_ptrs_current[row_start + 1]);
+        //    auto exec = global_mtx->get_executor();
+        //    auto num_elems = row_end - row_start;
+        //    exec->copy(num_elems, &row_ptrs_src[row_start + 1],
+        //               &row_ptrs_current[row_start + 1]);
         block_row_ptrs_data[block + 1] =
             nnz_tmp;  // this should be done here but there should be something
                       // in the description of this function to detail it.
@@ -493,7 +497,7 @@ void step_3_impl_factorize(
     auto exec = submtx_11.exec;
     auto block_row_ptrs_data = submtx_12.block_row_ptrs.get_data();
     auto partition_idxs = partitions.get_data();
-    auto dense_l_factors = submtx_11.dense_l_factors;
+    // auto dense_l_factors = submtx_11.dense_l_factors.begin();
     using dense = matrix::Dense<ValueType>;
     array<ValueType> residuals = array<ValueType>(exec, submtx_12.nz);
     exec->copy(submtx_12.nz, submtx_12.mtx->get_values(), residuals.get_data());
@@ -511,8 +515,9 @@ void step_3_impl_factorize(
                 (block_row_ptrs_data[block + 1] - block_row_ptrs_data[block]) /
                 block_size;
 
-            auto values_l_factor =
-                submtx_11.dense_l_factors.get_data()[block].get()->get_values();
+            // auto values_l_factor = dense_l_factors[block]->get_values();
+            auto l_factor_tmp = submtx_11.dense_l_factors[block].get();
+            auto values_l_factor = l_factor_tmp->get_values();
             auto values_12 =
                 &submtx_12.mtx->get_values()[block_row_ptrs_data[block]];
 
@@ -751,9 +756,9 @@ void step_3_impl_factorize(
     factorization::arrow_partitions<IndexType>& partitions)
 {
     auto exec = submtx_21.exec;
-    auto block_col_ptrs_data = submtx_21.block_col_ptrs.get_data();
+    auto block_col_ptrs = submtx_21.block_col_ptrs.get_data();
     auto partition_idxs = partitions.get_data();
-    auto dense_u_factors = submtx_11.dense_u_factors;
+    // auto dense_u_factors = submtx_11.dense_u_factors.get();
     auto nz_per_block = submtx_21.nz_per_block.get_data();
     auto num_blocks = submtx_21.num_blocks;
     using dense = matrix::Dense<ValueType>;
@@ -772,21 +777,19 @@ void step_3_impl_factorize(
 
             // Computes the left solution to a local linear system.
             dim<2> dim_rhs;
-            dim_rhs[0] =
-                (block_col_ptrs_data[block + 1] - block_col_ptrs_data[block]) /
-                block_size;
+            dim_rhs[0] = (block_col_ptrs[block + 1] - block_col_ptrs[block]) /
+                         block_size;
             dim_rhs[1] = block_size;
             auto values_u_factor =
-                dense_u_factors.get_data()[block].get()->get_values();
-            auto values_21 =
-                &submtx_21.mtx->get_values()[block_col_ptrs_data[block]];
-            // upper_triangular_left_solve_kernel<ValueType, IndexType>(
-            //     dim_tmp, values_u_factor, dim_rhs, values_21);
+                submtx_11.dense_u_factors[block].get()->get_values();
+            auto values_submtx_21 =
+                &submtx_21.mtx->get_values()[block_col_ptrs[block]];
+            upper_triangular_left_solve_kernel<ValueType>(
+                dim_tmp, values_u_factor, dim_rhs, values_submtx_21);
 
             // Computes residual vectors.
             auto num_elems = dim_rhs[0] * dim_rhs[1];
-            auto values_residual =
-                &residuals.get_data()[block_col_ptrs_data[block]];
+            auto values_residual = &residuals.get_data()[block_col_ptrs[block]];
             auto residual_vectors = dense::create(
                 exec, dim_rhs,
                 array<ValueType>::view(exec, num_elems, values_residual),
@@ -804,11 +807,11 @@ void step_3_impl_factorize(
                 array<ValueType>::view(exec, dim_tmp[0] * dim_tmp[1],
                                        values_u_factor),
                 stride));
-            auto solution =
-                dense::create(exec, dim_rhs,
-                              array<ValueType>::view(
-                                  exec, dim_rhs[0] * dim_rhs[1], values_21),
-                              stride);
+            auto solution = dense::create(
+                exec, dim_rhs,
+                array<ValueType>::view(exec, dim_rhs[0] * dim_rhs[1],
+                                       values_submtx_21),
+                stride);
 
             // MM multiplication (check if format is ok)
             auto x = solution->get_values();
@@ -955,6 +958,8 @@ void lower_triangular_solve_kernel(dim<2> dim_l_factor, ValueType* l_factor,
 
 GKO_INSTANTIATE_FOR_EACH_VALUE_TYPE(GKO_DECLARE_LOWER_TRIANGULAR_SOLVE_KERNEL);
 
+// Solve kernels
+
 // Uses column-major ordering.
 template <typename ValueType>
 void upper_triangular_solve_kernel(dim<2> dim_l_factor, ValueType* l_factor,
@@ -1024,7 +1029,7 @@ void convert_csr_2_dense(dim<2> size, const IndexType* row_ptrs,
         auto col_current = col_idxs[row_index];
         while ((col_current < col_end) && (col_old < col_current)) {
             auto col_local = col_current - col_start;
-            values_mtx[num_rows * row_local + col_local] = values[row_index];
+            // values_mtx[num_rows * row_local + col_local] = values[row_index];
             col_old = col_current;
             row_index += 1;
             col_current = col_idxs[row_index];
@@ -1081,7 +1086,7 @@ void factorize_kernel(matrix::Dense<ValueType>* mtx,
 
 GKO_INSTANTIATE_FOR_EACH_VALUE_TYPE(GKO_DECLARE_FACTORIZE_KERNEL);
 
-// Triangular solve kernels.
+// Triangular solve kernels for global matrix.
 
 template <typename ValueType, typename IndexType>
 void lower_triangular_solve_step_1(
@@ -1089,7 +1094,7 @@ void lower_triangular_solve_step_1(
     matrix::Dense<ValueType>* rhs)
 {
     auto partition_idxs = internal_mtx.partitions_.get_data();
-    auto dense_l_factors = internal_mtx.submtx_11_.dense_l_factors;
+    // auto dense_l_factors = internal_mtx.submtx_11_.dense_l_factors;
     auto num_blocks = internal_mtx.submtx_11_.num_blocks;
     IndexType num_rhs = 1;  // 1 rhs is used
     for (auto block = 0; block < num_blocks; block++) {
@@ -1100,7 +1105,7 @@ void lower_triangular_solve_step_1(
         dim<2> dim_rhs = {static_cast<size_type>(block_size),
                           static_cast<size_type>(num_rhs)};
         auto values_l_factor =
-            dense_l_factors.get_data()[block].get()->get_values();
+            internal_mtx.submtx_11_.dense_l_factors[block].get()->get_values();
         auto values_rhs = &rhs->get_values()[partition_idxs[block] * num_rhs];
         lower_triangular_solve_kernel(dim_tmp, values_l_factor, dim_rhs,
                                       values_rhs);
@@ -1134,8 +1139,8 @@ void lower_triangular_solve_step_2(
                           static_cast<size_type>(block_size)};
         auto values_21 = &values_l_factor[col_idx];
         auto values_rhs = &rhs->get_values()[partition_idxs[block]];
-        // csc_spdgemm<ValueType, IndexType>(dim_tmp, values_l_factor, dim_rhs,
-        //                                     values_rhs, -1.0);
+        csc_spdgemm<ValueType, IndexType>(dim_tmp, values_l_factor, dim_rhs,
+                                          values_rhs, -1.0);
     }
 }
 
@@ -1221,7 +1226,7 @@ void upper_triangular_solve_step_3(
     matrix::Dense<ValueType>* rhs)
 {
     auto partition_idxs = internal_mtx.partitions_.get_data();
-    auto dense_u_factors = internal_mtx.submtx_11_.dense_u_factors;
+    // auto dense_u_factors = internal_mtx.submtx_11_.dense_u_factors;
     auto num_blocks = internal_mtx.submtx_11_.num_blocks;
     IndexType num_rhs = 1;  // 1 rhs is used
     for (auto block = 0; block < num_blocks; block++) {
@@ -1231,11 +1236,12 @@ void upper_triangular_solve_step_3(
                           static_cast<size_type>(block_size)};
         dim<2> dim_rhs = {static_cast<size_type>(block_size),
                           static_cast<size_type>(num_rhs)};
-        auto values_u_factor =
-            dense_u_factors.get_data()[block].get()->get_values();
-        auto values_rhs = &rhs->get_values()[partition_idxs[block] * num_rhs];
-        lower_triangular_solve_kernel(dim_tmp, values_u_factor, dim_rhs,
-                                      values_rhs);
+        // auto values_u_factor =
+        //    dense_u_factors[block]->get_values();
+        // auto values_rhs = &rhs->get_values()[partition_idxs[block] *
+        // num_rhs]; lower_triangular_solve_kernel(dim_tmp, values_u_factor,
+        // dim_rhs,
+        //                              values_rhs);
     }
 }
 

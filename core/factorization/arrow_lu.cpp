@@ -263,6 +263,8 @@ void ArrowLu<ValueType, IndexType>::generate_workspace(
     using CsrMatrix = matrix::Csr<ValueType, IndexType>;
     using CooMatrix = matrix::Coo<ValueType, IndexType>;
 
+    std::cout << "In generate workspace" << '\n';
+
     GKO_ASSERT_IS_SQUARE_MATRIX(system_matrix);
 
     const auto exec = this->get_executor();
@@ -282,6 +284,7 @@ std::unique_ptr<Composition<ValueType>> ArrowLu<ValueType, IndexType>::generate(
     const std::shared_ptr<const LinOp>& system_matrix, bool skip_sorting,
     bool both_factors, std::ifstream& infile) const
 {
+    std::cout << "generate workspace " << '\n';
     using CsrMatrix = matrix::Csr<ValueType, IndexType>;
     using CooMatrix = matrix::Coo<ValueType, IndexType>;
 

@@ -65,6 +65,12 @@ namespace arrow_lu {
 // constexpr int default_block_size = 512;
 
 template <typename ValueType, typename IndexType>
+void step_1_impl_assemble(
+    const matrix::Csr<ValueType, IndexType>* global_mtx,
+    factorization::arrow_submatrix_11<ValueType, IndexType>& submtx_11,
+    factorization::arrow_partitions<IndexType>& partitions) GKO_NOT_IMPLEMENTED;
+
+template <typename ValueType, typename IndexType>
 void compute_factors(std::shared_ptr<const DefaultExecutor> exec,
                      gko::matrix::Csr<ValueType, IndexType>* global_mtx,
                      factorization::arrow_lu_workspace<ValueType, IndexType>*

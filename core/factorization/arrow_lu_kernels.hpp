@@ -335,7 +335,7 @@ const double PIVOT_AUGMENTATION = 1e-8;  // officially it is sqrt(eps)*||A||_1
     GKO_DECLARE_STEP_3_IMPL_FACTORIZE_21_KERNEL(ValueType, IndexType);      \
     template <typename ValueType, typename IndexType>                       \
     GKO_DECLARE_STEP_2_IMPL_FACTORIZE_22_KERNEL(ValueType, IndexType);      \
-    template <typename ValueType, typename size_type>                       \
+    template <typename ValueType>                                           \
     GKO_DECLARE_UPPER_TRIANGULAR_LEFT_SOLVE_KERNEL(ValueType);              \
     template <typename ValueType, typename IndexType>                       \
     GKO_DECLARE_LOWER_TRIANGULAR_SOLVE_STEP_1_KERNEL(ValueType, size_type); \
