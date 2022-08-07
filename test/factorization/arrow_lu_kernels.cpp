@@ -109,26 +109,30 @@ TYPED_TEST(ArrowLu, KernelTest)
     using matrix_type = typename TestFixture::matrix_type;
     using index_type = typename TestFixture::index_type;
     using value_type = typename TestFixture::value_type;
+    auto ref_exec = gko::ReferenceExecutor::create();
     for (auto& pair : this->matrices) {
         //SCOPED_TRACE(pair.first);
         auto& partition_idxs = pair.first;
         //auto& mtx = pair.second;
-        auto mtx = pair.second;
-        auto dmtx = gko::clone(this->exec, mtx);
+        std::cout << "testing\n";
+        auto A = pair.second;
+        auto dmtx = gko::clone(ref_exec, A);
         auto idx = partition_idxs->get_num_elems()-1;
-        index_type split_index = partition_idxs->get_data()[idx];
+        auto split_index = partition_idxs->get_data()[idx];
+        gko::array<index_type> partitions = {ref_exec, partition_idxs->get_num_elems()};
+        for (auto i = 0; i < partition_idxs->get_num_elems(); i++) {
+            partitions.get_data()[i] = partition_idxs->get_data()[i];
+        }
+        // auto lu_fact =
+        // gko::factorization::ArrowLu<value_type, index_type>::build()
+        //     .with_workspace(std::move(new gko::factorization::arrow_lu_workspace(A, partitions, split_index)))
+        //     .on(this->exec);
+        // auto fact = gko::share(lu_fact->generate(A));
 
-        auto partitions = gko::factorization::compute_partitions(partition_idxs.get(), split_index);
-        std::cout << "after compute_partitions\n";
-
-        //auto submtx_11 = gko::factorization::arrow_submatrix_11(mtx, partitions);
-        auto submtx_11 = compute_arrow_submatrix_11(mtx, partitions);
-        auto submtx_12 = compute_arrow_submatrix_12(mtx, submtx_11, partitions);
-        auto submtx_21 = compute_arrow_submatrix_21(mtx, submtx_11, partitions);
-        auto submtx_22 = compute_arrow_submatrix_22(mtx, submtx_11, submtx_12, submtx_21, partitions);
-        auto partitions_idxs = partitions.get_data();
-
-        gko::kernels::reference::arrow_lu::factorize_submatrix_11<value_type, index_type>(mtx.get(), submtx_11, partitions);
+        auto workspace = new gko::factorization::arrow_lu_workspace(A, partitions, split_index);
+        gko::kernels::reference::arrow_lu::compute_factors(ref_exec, workspace, A.get());
+        // std::cout << "split_index: " << fact->parameters_.workspace->get_submatrix_11()->split_index << '\n';
+        // gko::kernels::reference::arrow_lu::factorize_submatrix_11<value_type, index_type>(mtx.get(), submtx_11, partitions);
         //gko::kernels::EXEC_NAMESPACE::arrow_lu::factorize_submatrix_11<value_type, index_type>(mtx.get(), submtx_11, partitions);
 
         //auto forest = gko::factorization::compute_elim_forest(mtx.get());

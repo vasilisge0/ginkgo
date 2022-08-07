@@ -23,18 +23,18 @@ void compute_factors(
     factorization::arrow_lu_workspace<ValueType, IndexType>* workspace,
     const gko::matrix::Csr<ValueType, IndexType>* mtx)
 {
-    // auto submtx_11 = workspace->get_submatrix_11();
-    // auto submtx_12 = workspace->get_submatrix_12();
-    // auto submtx_21 = workspace->get_submatrix_21();
-    // auto submtx_22 = workspace->get_submatrix_22();
-    // auto partitions = workspace->get_partitions();
+    auto submtx_11 = workspace->get_submatrix_11();
+    auto submtx_12 = workspace->get_submatrix_12();
+    auto submtx_21 = workspace->get_submatrix_21();
+    auto submtx_22 = workspace->get_submatrix_22();
+    auto partitions = workspace->get_partitions();
 
-    // array<IndexType> row_ptrs_src_cur_array = {exec, submtx_12->size[0] + 1};
-    // array<IndexType> row_ptrs_dst_cur_array = {exec, submtx_12->size[0] + 1};
-    // array<IndexType> col_ptrs_dst_cur_array = {exec, submtx_12->size[0] + 1};
+    array<IndexType> row_ptrs_src_cur_array = {exec, submtx_12->size[0] + 1};
+    array<IndexType> row_ptrs_dst_cur_array = {exec, submtx_12->size[0] + 1};
+    array<IndexType> col_ptrs_dst_cur_array = {exec, submtx_12->size[0] + 1};
 
-    // initialize_submatrix_11(exec, partitions, mtx, submtx_11);
-    // factorize_submatrix_11(exec, partitions, mtx, submtx_11);
+    initialize_submatrix_11(exec, partitions, mtx, submtx_11);
+    factorize_submatrix_11(exec, partitions, mtx, submtx_11);
 
     // preprocess_submatrix_12(exec, partitions, mtx, submtx_12,
     // row_ptrs_src_cur_array, row_ptrs_dst_cur_array);

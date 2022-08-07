@@ -45,6 +45,7 @@ void compute_factors(
     initialize_submatrix_22(exec, partitions, submtx_11, submtx_12, submtx_21,
                             submtx_22);
     factorize_submatrix_22(exec, submtx_22);
+    std::cout << "here in REFERENCE\n";
 }
 
 GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
@@ -336,8 +337,13 @@ void move_min_wavefront(const IndexType* row_ptrs_src,
             found_nonzero_column = true;
         }
 
-        if ((row == row_min) && (row_ptrs_cur_submtx[row + 1] == 0)) {
-            row_ptrs_cur_submtx[row + 1] += len;
+        // if ((row == row_min) && (row_ptrs_cur_submtx[row + 1] == 0)) {
+        //     row_ptrs_cur_submtx[row + 1] += len;
+        // }
+    }
+    if (found_nonzero_column) {
+        for (auto r = row_start; r < row_end; r++) {
+            row_ptrs_cur_submtx[r + 1] += 1;
         }
     }
 
@@ -422,6 +428,17 @@ void preprocess_submatrix_12(
     convert_row_ptrs_to_global(num_blocks, partition_idxs, block_row_ptrs,
                                row_ptrs_cur_submtx);
 
+    std::cout << "row_ptrs_cur_submtx[0]: " << row_ptrs_cur_submtx[0] << '\n';
+    std::cout << "row_ptrs_cur_submtx[1]: " << row_ptrs_cur_submtx[1] << '\n';
+    std::cout << "row_ptrs_cur_submtx[2]: " << row_ptrs_cur_submtx[2] << '\n';
+    std::cout << "row_ptrs_cur_submtx[3]: " << row_ptrs_cur_submtx[3] << '\n';
+    std::cout << "row_ptrs_cur_submtx[4]: " << row_ptrs_cur_submtx[4] << '\n';
+    std::cout << "row_ptrs_cur_submtx[5]: " << row_ptrs_cur_submtx[5] << '\n';
+    std::cout << "row_ptrs_cur_submtx[6]: " << row_ptrs_cur_submtx[6] << '\n';
+    std::cout << "row_ptrs_cur_submtx[7]: " << row_ptrs_cur_submtx[7] << '\n';
+    std::cout << "row_ptrs_cur_submtx[8]: " << row_ptrs_cur_submtx[8] << '\n';
+
+
     {
         array<IndexType> col_idxs_tmp = {
             exec, static_cast<size_type>(submtx_12->nnz)};
@@ -447,19 +464,40 @@ IndexType copy_submatrix_12_block(IndexType* row_ptrs_cur_src,
                                   IndexType row_end, size_type split_index,
                                   IndexType col_min, IndexType remaining_nnz)
 {
+    bool found_nz_col = false;
     for (auto row = row_start; row < row_end; row++) {
         const auto row_index_src = row_ptrs_cur_src[row];
         const auto col = col_idxs_src[row_index_src];
-        const auto row_index_submtx = row_ptrs_cur_submtx[row];
-
-        values_submtx[row_index_submtx] =
-            (col == col_min) ? values_src[row_index_src] : 0.0;
-        col_idxs_submtx[row_index_submtx] =
-            col_min - static_cast<IndexType>(split_index);
-        row_ptrs_cur_submtx[row] += 1;
         if (col == col_min) {
-            remaining_nnz -= 1;
-            row_ptrs_cur_src[row] += 1;
+            found_nz_col = true;
+            break;
+        }
+    }
+
+    if (found_nz_col) {
+        for (auto row = row_start; row < row_end; row++) {
+            const auto row_index_src = row_ptrs_cur_src[row];
+            const auto col = col_idxs_src[row_index_src];
+            const auto row_index_submtx = row_ptrs_cur_submtx[row];
+
+            values_submtx[row_index_submtx] =
+                (col == col_min) ? values_src[row_index_src] : 0.0;
+            col_idxs_submtx[row_index_submtx] =
+                col_min - static_cast<IndexType>(split_index);
+
+            // std::cout << "row: " << row << ", col: " << col << ",
+            // row_index_submtx: " << row_index_submtx << ",
+            // col_idxs_submtx[row_index_submtx]: " <<
+            // col_idxs_submtx[row_index_submtx] << '\n';
+            if (row_ptrs_cur_submtx[row] == 15)
+                std::cout << "row_index: " << row_ptrs_cur_submtx[row]
+                          << ", row: " << row << ", col: " << col << '\n';
+
+            row_ptrs_cur_submtx[row] += 1;
+            if (col == col_min) {
+                remaining_nnz -= 1;
+                row_ptrs_cur_src[row] += 1;
+            }
         }
     }
     return remaining_nnz;
@@ -502,7 +540,7 @@ void initialize_submatrix_12(
     auto row_ptrs = submtx_12->mtx->get_row_ptrs();
     exec->copy(submtx_12->size[0] + 1, row_ptrs_src, row_ptrs_cur_src);
 
-    for (auto block = 0; block < 19; block++) {
+    for (auto block = 0; block < num_blocks; block++) {
         const auto block_size =
             partition_idxs[block + 1] - partition_idxs[block];
         const auto row_start = partition_idxs[block];
@@ -528,6 +566,12 @@ void initialize_submatrix_12(
                 remaining_nnz);
         }
     }
+    std::cout << "col_idxs[0]: " << col_idxs[0] << '\n';
+    std::cout << "col_idxs[1]: " << col_idxs[1] << '\n';
+    std::cout << "col_idxs[2]: " << col_idxs[2] << '\n';
+    std::cout << "col_idxs[3]: " << col_idxs[3] << '\n';
+    std::cout << "col_idxs[4]: " << col_idxs[4] << '\n';
+    std::cout << "col_idxs[5]: " << col_idxs[5] << '\n';
     reset_row_ptrs(num_blocks, partition_idxs, row_ptrs);
 }
 
@@ -645,11 +689,18 @@ void preprocess_submatrix_21_block(dim<2> size, const IndexType* partition_idxs,
         max = (col > max) ? col : max;
         if ((col >= partition_idxs[block]) &&
             (col < partition_idxs[block + 1])) {
+            std::cout << "  col: " << col << '\n';
             nnz += blk;
             for (auto c = col_start; c < col_end; c++) {
                 col_ptrs[c + 1] += 1;
             }
-            row_ptrs_cur_submtx[row] += 1;
+
+            auto c = col_idxs_src[col_index];
+            while (c < col_end) {
+                row_ptrs_cur_submtx[row] += 1;
+                auto row_idx = row_ptrs_cur_submtx[row];
+                c = col_idxs_src[row_idx];
+            }
         }
     }
     *nnz_out += nnz;
@@ -690,11 +741,13 @@ void preprocess_submatrix_21(
     const auto row_ptrs_src = mtx->get_const_row_ptrs();
     const auto values_src = mtx->get_const_values();
     auto col_ptrs = col_ptrs_dst_array.get_data();
+    col_ptrs_dst_array.fill(0);
     auto nnz_per_block = submtx_21->nnz_per_block.get_data();
     auto row_ptrs_cur_submtx = row_ptrs_dst_array.get_data();
     auto block_col_ptrs = submtx_21->block_ptrs.get_data();
     IndexType nnz = 0;
     exec->copy(size[0] + 1, &row_ptrs_src[split_index], row_ptrs_cur_submtx);
+
     for (auto block = 0; block < num_blocks; block++) {
         const auto col_start = partition_idxs[block];
         const auto col_end = partition_idxs[block + 1];
@@ -755,31 +808,23 @@ void compute_col_ptrs_submatrix_21(IndexType* row_ptrs_cur,
 // Sets row_idxs of arrow_submatrix_21.
 template <typename IndexType>
 void set_row_ptrs_submatrix_21(std::shared_ptr<const DefaultExecutor> exec,
-                               IndexType* col_ptrs, IndexType* col_ptrs_cur,
-                               IndexType* row_ptrs_cur,
+                               IndexType* col_ptrs, IndexType* block_col_ptrs,
+                               IndexType* col_ptrs_cur, IndexType* row_ptrs_cur,
                                const IndexType* col_idxs_src,
                                IndexType* row_idxs, IndexType col_start,
                                IndexType col_end, IndexType row_start,
-                               IndexType row_end)
+                               IndexType row_end, IndexType block)
 {
     exec->copy(col_end - col_start + 1, &col_ptrs[col_start],
                &col_ptrs_cur[col_start]);
-    for (auto row_src = row_start; row_src < row_end; row_src++) {
-        const auto row_index_src = row_ptrs_cur[row_src - row_start];
-        const auto col_src = col_idxs_src[row_index_src];
-        if ((col_src >= col_start) && (col_src < col_end)) {
-            for (auto col = col_start; col < col_end; col++) {
-                const auto col_index_src = col_ptrs_cur[col];
-                row_idxs[col_index_src] = row_src;
-                col_ptrs_cur[col] += 1;
-                // std::cout << "col_index_src: " << col_index_src << ", col: "
-                // << col << '\n';
-            }
-            row_ptrs_cur[row_src - row_start] += 1;
-            // std::cout << "\n";
-        }
+    auto num_rows = (block_col_ptrs[block + 1] - block_col_ptrs[block]) /
+                    (col_end - col_start);
+    auto counter = 0;
+    for (auto c_index = block_col_ptrs[block];
+         c_index < block_col_ptrs[block + 1]; c_index++) {
+        row_idxs[c_index] = counter % num_rows;
+        counter += 1;
     }
-    // std::cout << "\n";
 }
 
 // Copies numerical values from mtx to arrow_submatrix_21.mtx.
@@ -864,13 +909,13 @@ void initialize_submatrix_21(
                row_ptrs_cur2);
     exec->copy(submtx_21->size[0] + 1, submtx_21->mtx->get_row_ptrs(),
                col_ptrs_cur);
-
     for (IndexType block_index = 0; block_index < num_blocks; block_index++) {
         const auto col_start = partition_idxs[block_index];
         const auto col_end = partition_idxs[block_index + 1];
-        set_row_ptrs_submatrix_21(exec, col_ptrs, col_ptrs_cur, row_ptrs_cur,
-                                  col_idxs_src, row_idxs, col_start, col_end,
-                                  row_start, row_end);
+        set_row_ptrs_submatrix_21(exec, col_ptrs, block_col_ptrs, col_ptrs_cur,
+                                  row_ptrs_cur, col_idxs_src, row_idxs,
+                                  col_start, col_end, row_start, row_end,
+                                  block_index);
 
         copy_values_submatrix_21(submtx_21->size, submtx_21->split_index, exec,
                                  col_ptrs, col_ptrs_cur, row_ptrs_cur,
@@ -878,6 +923,7 @@ void initialize_submatrix_21(
                                  row_ptrs_src, values, values_src, col_start,
                                  col_end, row_start, row_end);
     }
+
     reset_col_ptrs_submatrix_21(num_blocks, partition_idxs, col_ptrs);
 }
 
@@ -1008,6 +1054,7 @@ void initialize_submatrix_22(
     const auto block_col_ptrs = submtx_21->block_ptrs.get_const_data();
     const auto block_row_ptrs = submtx_12->block_ptrs.get_const_data();
     for (IndexType block = 0; block < num_blocks; block++) {
+        std::cout << "block: " << block << "num_blocks: " << num_blocks << '\n';
         const auto block_size =
             partition_idxs[block + 1] - partition_idxs[block];
         ValueType coeff = -1.0;
@@ -1057,16 +1104,15 @@ void spdgemm_blocks(
                 auto col_index_21 =
                     block_col_ptrs[block_index] + num_rows_21 * i + j;
                 auto value_21 = values_21[col_index_21];
-                auto row = row_idxs_21[col_index_21] -
-                           static_cast<IndexType>(split_index);
+                auto row = row_idxs_21[col_index_21];
 
                 auto row_index_12 =
                     block_row_ptrs[block_index] + num_cols_12 * i + k;
                 auto value_12 = values_12[row_index_12];
                 auto col = col_idxs_12[row_index_12];
 
-                // std::cout << "row: " << row << ", col: " << col << ",
-                // col_index_21: " << col_index_21 << '\n';
+                std::cout << "row: " << row << ", col: " << col
+                          << ", col_index_21: " << col_index_21 << '\n';
                 schur_complement_values[size[1] * row + col] +=
                     (alpha * value_21 * value_12);
             }
