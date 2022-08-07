@@ -40,14 +40,11 @@ void compute_factors(
     factorize_submatrix_12(exec, partitions, submtx_11, submtx_12);
     preprocess_submatrix_21(exec, partitions, mtx, submtx_21,
                             col_ptrs_dst_cur_array, row_ptrs_src_cur_array);
-    initialize_submatrix_21(exec, workspace->get_partitions(), mtx,
-                            workspace->get_submatrix_21());
-    factorize_submatrix_21(exec, workspace->get_partitions(),
-                           workspace->get_submatrix_11(),
-                           workspace->get_submatrix_21());
+    initialize_submatrix_21(exec, partitions, mtx, submtx_21);
+    factorize_submatrix_21(exec, partitions, submtx_11, submtx_21);
     initialize_submatrix_22(exec, partitions, submtx_11, submtx_12, submtx_21,
                             submtx_22);
-    factorize_submatrix_22(exec, workspace->get_submatrix_22());
+    factorize_submatrix_22(exec, submtx_22);
 }
 
 GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
@@ -649,24 +646,9 @@ void preprocess_submatrix_21_block(dim<2> size, const IndexType* partition_idxs,
         if ((col >= partition_idxs[block]) &&
             (col < partition_idxs[block + 1])) {
             nnz += blk;
-            if (block == 6) {
-                std::cout << "row: " << row << ", col: " << col
-                          << ", col_start: " << col_start
-                          << ", col_end: " << col_end << '\n';
-                std::cout << "col_ptrs[21]: " << col_ptrs[21] << '\n';
-                std::cout << "col_ptrs[22]: " << col_ptrs[22] << '\n';
-                std::cout << "col_ptrs[23]: " << col_ptrs[23] << '\n';
-                std::cout << "col_ptrs[24]: " << col_ptrs[24] << '\n';
-            }
             for (auto c = col_start; c < col_end; c++) {
                 col_ptrs[c + 1] += 1;
-                if (block == 6)
-                    std::cout << "c+1: " << c + 1
-                              << ", col_ptrs[c + 1]: " << col_ptrs[c + 1]
-                              << '\n';
             }
-            if (block == 6) std::cout << "\n";
-
             row_ptrs_cur_submtx[row] += 1;
         }
     }
@@ -730,15 +712,7 @@ void preprocess_submatrix_21(
                                 static_cast<IndexType>(block), col_start,
                                 col_end);
     }
-    std::cout << "col_ptrs[0]: " << col_ptrs[0] << '\n';
-    std::cout << "col_ptrs[1]: " << col_ptrs[1] << '\n';
-    std::cout << "col_ptrs[2]: " << col_ptrs[2] << '\n';
-    std::cout << "col_ptrs[3]: " << col_ptrs[3] << '\n';
-    std::cout << '\n';
-    std::cout << "col_ptrs[21]: " << col_ptrs[21] << '\n';
-    std::cout << "col_ptrs[22]: " << col_ptrs[22] << '\n';
-    std::cout << "col_ptrs[23]: " << col_ptrs[23] << '\n';
-    std::cout << "col_ptrs[24]: " << col_ptrs[24] << '\n';
+
     {
         const dim<2> size_tmp = {submtx_21->size[1], submtx_21->size[0]};
         auto row_idxs_tmp =
@@ -894,7 +868,6 @@ void initialize_submatrix_21(
     for (IndexType block_index = 0; block_index < num_blocks; block_index++) {
         const auto col_start = partition_idxs[block_index];
         const auto col_end = partition_idxs[block_index + 1];
-        std::cout << "block_index: " << block_index << '\n';
         set_row_ptrs_submatrix_21(exec, col_ptrs, col_ptrs_cur, row_ptrs_cur,
                                   col_idxs_src, row_idxs, col_start, col_end,
                                   row_start, row_end);
@@ -906,11 +879,6 @@ void initialize_submatrix_21(
                                  col_end, row_start, row_end);
     }
     reset_col_ptrs_submatrix_21(num_blocks, partition_idxs, col_ptrs);
-
-    std::cout << "row_idxs[9]: " << row_idxs[9] << '\n';
-    std::cout << "row_idxs[10]: " << row_idxs[10] << '\n';
-    std::cout << "row_idxs[11]: " << row_idxs[11] << '\n';
-    std::cout << "row_idxs[53]: " << row_idxs[53] << '\n';
 }
 
 GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
@@ -1040,7 +1008,6 @@ void initialize_submatrix_22(
     const auto block_col_ptrs = submtx_21->block_ptrs.get_const_data();
     const auto block_row_ptrs = submtx_12->block_ptrs.get_const_data();
     for (IndexType block = 0; block < num_blocks; block++) {
-        std::cout << "block: " << block << '\n';
         const auto block_size =
             partition_idxs[block + 1] - partition_idxs[block];
         ValueType coeff = -1.0;

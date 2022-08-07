@@ -215,8 +215,6 @@ arrow_submatrix_11<ValueType, IndexType>::arrow_submatrix_11(
 {
     auto d_tmp = partitions.data.get_data();
     this->exec = mtx->get_executor();
-    std::cout << "(11) partitions.split_index: " << partitions.split_index
-              << '\n';
     this->split_index = partitions.split_index;
     this->num_blocks = partitions.num_endpoints - 1;
     this->row_ptrs_cur =
@@ -301,7 +299,6 @@ arrow_submatrix_12<ValueType, IndexType>::arrow_submatrix_12(
 {
     this->exec = submtx_11.exec;
     this->split_index = partitions.split_index;
-    std::cout << "(12) this->split_index: " << partitions.split_index << '\n';
     this->num_blocks = partitions.num_endpoints - 1;
     this->size = {this->split_index, mtx->get_size()[0] - this->split_index};
     this->row_ptrs_cur = array<IndexType>(this->exec, this->size[0] + 1);
@@ -329,13 +326,8 @@ arrow_submatrix_21<ValueType, IndexType>::arrow_submatrix_21(
     const arrow_submatrix_11<ValueType, IndexType>& submtx_11,
     const arrow_partitions<IndexType>& partitions)
 {
-    std::cout << "CONSTRUCTOR 21\n";
     this->exec = submtx_11.exec;
     this->split_index = partitions.split_index;
-    std::cout << "(12) this->split_index: " << this->split_index << '\n';
-
-    std::cout << "this->split_index: " << this->split_index << ", "
-              << partitions.split_index << '\n';
     this->size = {mtx->get_size()[0] - this->split_index, this->split_index};
     this->num_blocks = partitions.num_endpoints - 1;
 
@@ -343,8 +335,6 @@ arrow_submatrix_21<ValueType, IndexType>::arrow_submatrix_21(
     this->row_ptrs_cur.fill(0);
     this->row_ptrs_cur2 = array<IndexType>(this->exec, this->size[0] + 1);
     this->row_ptrs_cur2.fill(0);
-    std::cout << "size[0]: " << this->size[0] << ", size[1]: " << this->size[1]
-              << "\n";
     this->col_ptrs_cur = array<IndexType>(this->exec, this->size[1] + 1);
     this->col_ptrs_cur.fill(0);
 
@@ -375,8 +365,6 @@ arrow_submatrix_22<ValueType, IndexType>::arrow_submatrix_22(
 {
     this->exec = submtx_11.exec;
     this->split_index = partitions.split_index;
-    std::cout << "(22) this->split_index: " << this->split_index << '\n';
-
     this->size = {mtx->get_size()[0] - this->split_index,
                   mtx->get_size()[1] - this->split_index};
     auto values = array<ValueType>(this->exec, this->size[0] * this->size[1]);
