@@ -341,11 +341,14 @@ void move_min_wavefront(const IndexType* row_ptrs_src,
         //     row_ptrs_cur_submtx[row + 1] += len;
         // }
     }
+
     if (found_nonzero_column) {
         for (auto r = row_start; r < row_end; r++) {
             row_ptrs_cur_submtx[r + 1] += 1;
         }
     }
+
+    std::cout << "row_ptrs_cur_submtx[7]: " << row_ptrs_cur_submtx[7] << '\n';
 
     nnz = (found_nonzero_column && (col_min >= split_index)) ? nnz + len : nnz;
 
@@ -394,7 +397,7 @@ void preprocess_submatrix_12(
     IndexType row_min = 0;
     IndexType num_occurences = 0;
     row_ptrs_cur_dst_array.fill(0);
-    exec->copy(submtx_12->size[0], row_ptrs_src, row_ptrs_cur_src);
+    exec->copy(submtx_12->size[0] + 1, row_ptrs_src, row_ptrs_cur_src);
 
     for (auto block = 0; block < num_blocks; block++) {
         const auto len = partition_idxs[block + 1] - partition_idxs[block];
@@ -407,7 +410,7 @@ void preprocess_submatrix_12(
         auto remaining_nnz = compute_remaining_nnz_row_check(
             row_ptrs_src, row_ptrs_cur_src, row_start, row_end);
         nnz_per_block[block] = remaining_nnz;
-
+        std::cout << "block: " << block << '\n';
         while (remaining_nnz > 0) {
             find_min_col(row_ptrs_src, col_idxs_src, row_ptrs_cur_src,
                          submtx_12->size, row_start, row_end, &col_min,
@@ -417,6 +420,7 @@ void preprocess_submatrix_12(
                                row_ptrs_cur_submtx, row_start, row_end, row_min,
                                col_min, submtx_12->split_index, len, &nnz_tmp,
                                &remaining_nnz);
+            std::cout << "remaining_nnz: " << remaining_nnz << '\n';
             col_min = max_col;
         }
 
@@ -424,6 +428,7 @@ void preprocess_submatrix_12(
     }
 
     submtx_12->nnz = nnz_tmp;
+    std::cout << "submtx_12->nnz: " << submtx_12->nnz << '\n';
 
     convert_row_ptrs_to_global(num_blocks, partition_idxs, block_row_ptrs,
                                row_ptrs_cur_submtx);
@@ -484,14 +489,12 @@ IndexType copy_submatrix_12_block(IndexType* row_ptrs_cur_src,
                 (col == col_min) ? values_src[row_index_src] : 0.0;
             col_idxs_submtx[row_index_submtx] =
                 col_min - static_cast<IndexType>(split_index);
-
             // std::cout << "row: " << row << ", col: " << col << ",
-            // row_index_submtx: " << row_index_submtx << ",
+            // row_index_src: " << row_index_src << ", row_index_submtx: " <<
+            // row_index_submtx << '\n'; std::cout << "row: " << row << ", col:
+            // " << col << ",row_index_submtx: " << row_index_submtx << ",
             // col_idxs_submtx[row_index_submtx]: " <<
             // col_idxs_submtx[row_index_submtx] << '\n';
-            if (row_ptrs_cur_submtx[row] == 15)
-                std::cout << "row_index: " << row_ptrs_cur_submtx[row]
-                          << ", row: " << row << ", col: " << col << '\n';
 
             row_ptrs_cur_submtx[row] += 1;
             if (col == col_min) {
@@ -564,6 +567,8 @@ void initialize_submatrix_12(
                 row_ptrs_cur_src, row_ptrs, col_idxs_src, values_src, col_idxs,
                 values, row_start, row_end, split_index, col_min,
                 remaining_nnz);
+
+            std::cout << "remaining_nnz: " << remaining_nnz << '\n';
         }
     }
     std::cout << "col_idxs[0]: " << col_idxs[0] << '\n';
@@ -687,12 +692,12 @@ void preprocess_submatrix_21_block(dim<2> size, const IndexType* partition_idxs,
         const auto col_start = partition_idxs[block];
         const auto col_end = partition_idxs[block + 1];
         max = (col > max) ? col : max;
-        if ((col >= partition_idxs[block]) &&
-            (col < partition_idxs[block + 1])) {
-            std::cout << "  col: " << col << '\n';
+
+        if ((col >= col_start) && (col < col_end)) {
+            std::cout << "  col: " << col << ", " << '\n';
             nnz += blk;
             for (auto c = col_start; c < col_end; c++) {
-                col_ptrs[c + 1] += 1;
+                // col_ptrs[c + 1] += 1;
             }
 
             auto c = col_idxs_src[col_index];
@@ -1289,6 +1294,9 @@ void factorize_kernel(const matrix::Dense<ValueType>* mtx,
     }
 
     for (auto i = 0; i < mtx->get_size()[0]; ++i) {
+        //     std::cout << "mtx->get_size()[0]: " << mtx->get_size()[0] <<
+        //     '\n';
+        // for (auto i = 0; i < 2; ++i) {
         ValueType pivot = mtx_values[mtx->get_size()[0] * i + i];
         if (abs(pivot) < PIVOT_THRESHOLD) {
             pivot += PIVOT_AUGMENTATION;
