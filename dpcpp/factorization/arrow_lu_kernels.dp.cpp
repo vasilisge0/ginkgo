@@ -49,10 +49,11 @@ namespace dpcpp {
 namespace arrow_lu {
 
 template <typename ValueType, typename IndexType>
-void compute_factors(std::shared_ptr<const DefaultExecutor> exec,
-                     gko::matrix::Csr<ValueType, IndexType>* global_mtx,
-                     factorization::arrow_lu_workspace<ValueType, IndexType>*
-                         workspace) GKO_NOT_IMPLEMENTED;
+void compute_factors(
+    std::shared_ptr<const DefaultExecutor> exec,
+    factorization::arrow_lu_workspace<ValueType, IndexType>* workspace,
+    const gko::matrix::Csr<ValueType, IndexType>* mtx) GKO_NOT_IMPLEMENTED;
+
 
 GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
     GKO_DECLARE_ARROW_LU_COMPUTE_FACTORS_KERNEL);

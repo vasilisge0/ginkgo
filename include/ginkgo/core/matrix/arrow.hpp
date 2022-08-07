@@ -147,7 +147,7 @@ class Arrow : public EnableLinOp<Arrow<ValueType, IndexType>>,
               public ScaledIdentityAddable {
     friend class EnableCreateMethod<Arrow>;
     friend class EnablePolymorphicObject<Arrow, LinOp>;
-    friend class Arrow<ValueType, IndexType>;
+    // friend class Arrow<ValueType, IndexType>;
     friend class Coo<ValueType, IndexType>;
     friend class Dense<ValueType>;
     friend class Diagonal<ValueType>;

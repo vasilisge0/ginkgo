@@ -63,12 +63,18 @@ namespace arrow_lu {
 
 constexpr int default_block_size = 512;
 
+// template <typename ValueType, typename IndexType>
+// void compute_factors(
+//    std::shared_ptr<const DefaultExecutor> exec,
+//    matrix::Csr<ValueType, IndexType>* global_mtx,
+//    gko::factorization::arrow_lu_workspace<ValueType, IndexType>* workspace)
+//    GKO_NOT_IMPLEMENTED;
+//
 template <typename ValueType, typename IndexType>
 void compute_factors(
     std::shared_ptr<const DefaultExecutor> exec,
-    matrix::Csr<ValueType, IndexType>* global_mtx,
-    gko::factorization::arrow_lu_workspace<ValueType, IndexType>* workspace)
-    GKO_NOT_IMPLEMENTED;
+    factorization::arrow_lu_workspace<ValueType, IndexType>* workspace,
+    const gko::matrix::Csr<ValueType, IndexType>* mtx) GKO_NOT_IMPLEMENTED;
 
 // GKO_ENABLE_IMPLEMENTATION_SELECTION(select_compute_factors, compute_factors);
 

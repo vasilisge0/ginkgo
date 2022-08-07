@@ -119,7 +119,6 @@ __global__ __launch_bounds__(default_dot_size) void multidot_kernel(
     }
 }
 
-
 // Must be called with at least `num_rows * stride_next_krylov` threads in
 // total.
 template <int block_size, typename ValueType>
