@@ -187,18 +187,17 @@ struct arrow_submatrix_22 : public arrow_submatrix<ValueType, IndexType> {
 
 
 template <typename ValueType, typename IndexType>
-struct arrow_lu_workspace {
+struct ArrowLuState {
 private:
 public:
     arrow_matrix<ValueType, IndexType> mtx_;
 
-    arrow_lu_workspace(std::shared_ptr<matrix::Csr<ValueType, IndexType>> mtx,
-                       arrow_partitions<IndexType>& partitions);
-    arrow_lu_workspace(std::shared_ptr<matrix::Csr<ValueType, IndexType>> mtx,
-                       std::ifstream& instream);
-    arrow_lu_workspace(std::shared_ptr<matrix::Csr<ValueType, IndexType>> mtx,
-                       gko::array<IndexType>& partitions,
-                       IndexType split_index_in);
+    ArrowLuState(std::shared_ptr<matrix::Csr<ValueType, IndexType>> mtx,
+                 arrow_partitions<IndexType>& partitions);
+    ArrowLuState(std::shared_ptr<matrix::Csr<ValueType, IndexType>> mtx,
+                 std::ifstream& instream);
+    ArrowLuState(std::shared_ptr<matrix::Csr<ValueType, IndexType>> mtx,
+                 gko::array<IndexType>& partitions, IndexType split_index_in);
     arrow_matrix<ValueType, IndexType>* get_matrix();
     arrow_submatrix<ValueType, IndexType>& get_submatrix(IndexType row_block,
                                                          IndexType col_block);

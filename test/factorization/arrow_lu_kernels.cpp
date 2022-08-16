@@ -129,7 +129,7 @@ TYPED_TEST(ArrowLu, KernelTest)
         //     .on(this->exec);
         // auto fact = gko::share(lu_fact->generate(A));
 
-        auto workspace = new gko::factorization::arrow_lu_workspace(A, partitions, split_index);
+        auto workspace = new gko::factorization::ArrowLuState(A, partitions, split_index);
         gko::kernels::reference::arrow_lu::compute_factors(ref_exec, workspace, A.get());
         // std::cout << "split_index: " << fact->parameters_.workspace->get_submatrix_11()->split_index << '\n';
         // gko::kernels::reference::arrow_lu::factorize_submatrix_11<value_type, index_type>(mtx.get(), submtx_11, partitions);

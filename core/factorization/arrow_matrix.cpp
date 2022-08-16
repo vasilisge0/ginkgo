@@ -8,6 +8,7 @@
 namespace gko {
 namespace factorization {
 
+
 template <typename IndexType>
 block_csr_storage<IndexType>::block_csr_storage(
     std::shared_ptr<const Executor> exec, IndexType num_elems_in,
@@ -634,14 +635,14 @@ GKO_INSTANTIATE_FOR_EACH_INDEX_TYPE(
 
 
 template <typename ValueType, typename IndexType>
-arrow_lu_workspace<ValueType, IndexType>::arrow_lu_workspace(
+ArrowLuState<ValueType, IndexType>::ArrowLuState(
     std::shared_ptr<matrix::Csr<ValueType, IndexType>> mtx,
     arrow_partitions<IndexType>& partitions)
     : mtx_(mtx, partitions)
 {}
 
 #define GKO_DECLARE_ARROW_WORKSPACE_0_KERNEL(ValueType, IndexType) \
-    arrow_lu_workspace<ValueType, IndexType>::arrow_lu_workspace(  \
+    ArrowLuState<ValueType, IndexType>::ArrowLuState(              \
         std::shared_ptr<matrix::Csr<ValueType, IndexType>> mtx,    \
         arrow_partitions<IndexType>& partitions);
 
@@ -650,14 +651,14 @@ GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
 
 
 template <typename ValueType, typename IndexType>
-arrow_lu_workspace<ValueType, IndexType>::arrow_lu_workspace(
+ArrowLuState<ValueType, IndexType>::ArrowLuState(
     std::shared_ptr<matrix::Csr<ValueType, IndexType>> mtx,
     std::ifstream& instream)
     : mtx_(mtx, instream)
 {}
 
 #define GKO_DECLARE_ARROW_WORKSPACE_1_KERNEL(ValueType, IndexType) \
-    arrow_lu_workspace<ValueType, IndexType>::arrow_lu_workspace(  \
+    ArrowLuState<ValueType, IndexType>::ArrowLuState(              \
         std::shared_ptr<matrix::Csr<ValueType, IndexType>> mtx,    \
         std::ifstream& instream);
 
@@ -666,14 +667,14 @@ GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
 
 
 template <typename ValueType, typename IndexType>
-arrow_lu_workspace<ValueType, IndexType>::arrow_lu_workspace(
+ArrowLuState<ValueType, IndexType>::ArrowLuState(
     std::shared_ptr<matrix::Csr<ValueType, IndexType>> mtx,
     gko::array<IndexType>& partitions, IndexType split_index_in)
     : mtx_(mtx, partitions, split_index_in)
 {}
 
 #define GKO_DECLARE_ARROW_WORKSPACE_2_KERNEL(ValueType, IndexType) \
-    arrow_lu_workspace<ValueType, IndexType>::arrow_lu_workspace(  \
+    ArrowLuState<ValueType, IndexType>::ArrowLuState(              \
         std::shared_ptr<matrix::Csr<ValueType, IndexType>> mtx,    \
         gko::array<IndexType>& partitions, IndexType split_index_in)
 
@@ -683,14 +684,14 @@ GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
 
 template <typename ValueType, typename IndexType>
 arrow_matrix<ValueType, IndexType>*
-arrow_lu_workspace<ValueType, IndexType>::get_matrix()
+ArrowLuState<ValueType, IndexType>::get_matrix()
 {
     return &mtx_;
 }
 
 #define GKO_DECLARE_ARROW_WORKSPACE_GET_MATRIX_KERNEL(ValueType, IndexType) \
     arrow_matrix<ValueType, IndexType>*                                     \
-    arrow_lu_workspace<ValueType, IndexType>::get_matrix()
+    ArrowLuState<ValueType, IndexType>::get_matrix()
 
 GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
     GKO_DECLARE_ARROW_WORKSPACE_GET_MATRIX_KERNEL);
@@ -698,7 +699,7 @@ GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
 
 template <typename ValueType, typename IndexType>
 arrow_submatrix_11<ValueType, IndexType>* const
-arrow_lu_workspace<ValueType, IndexType>::get_submatrix_11()
+ArrowLuState<ValueType, IndexType>::get_submatrix_11()
 {
     return &mtx_.submtx_11_;
 }
@@ -706,7 +707,7 @@ arrow_lu_workspace<ValueType, IndexType>::get_submatrix_11()
 #define GKO_DECLARE_ARROW_WORKSPACE_GET_SUBMATRIX_11_KERNEL(ValueType, \
                                                             IndexType) \
     arrow_submatrix_11<ValueType, IndexType>* const                    \
-    arrow_lu_workspace<ValueType, IndexType>::get_submatrix_11()
+    ArrowLuState<ValueType, IndexType>::get_submatrix_11()
 
 GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
     GKO_DECLARE_ARROW_WORKSPACE_GET_SUBMATRIX_11_KERNEL);
@@ -714,7 +715,7 @@ GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
 
 template <typename ValueType, typename IndexType>
 arrow_submatrix_12<ValueType, IndexType>* const
-arrow_lu_workspace<ValueType, IndexType>::get_submatrix_12()
+ArrowLuState<ValueType, IndexType>::get_submatrix_12()
 {
     return &mtx_.submtx_12_;
 }
@@ -722,7 +723,7 @@ arrow_lu_workspace<ValueType, IndexType>::get_submatrix_12()
 #define GKO_DECLARE_ARROW_WORKSPACE_GET_SUBMATRIX_12_KERNEL(ValueType, \
                                                             IndexType) \
     arrow_submatrix_12<ValueType, IndexType>* const                    \
-    arrow_lu_workspace<ValueType, IndexType>::get_submatrix_12()
+    ArrowLuState<ValueType, IndexType>::get_submatrix_12()
 
 GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
     GKO_DECLARE_ARROW_WORKSPACE_GET_SUBMATRIX_12_KERNEL);
@@ -730,7 +731,7 @@ GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
 
 template <typename ValueType, typename IndexType>
 arrow_submatrix_21<ValueType, IndexType>* const
-arrow_lu_workspace<ValueType, IndexType>::get_submatrix_21()
+ArrowLuState<ValueType, IndexType>::get_submatrix_21()
 {
     return &mtx_.submtx_21_;
 }
@@ -738,7 +739,7 @@ arrow_lu_workspace<ValueType, IndexType>::get_submatrix_21()
 #define GKO_DECLARE_ARROW_WORKSPACE_GET_SUBMATRIX_21_KERNEL(ValueType, \
                                                             IndexType) \
     arrow_submatrix_21<ValueType, IndexType>* const                    \
-    arrow_lu_workspace<ValueType, IndexType>::get_submatrix_21()
+    ArrowLuState<ValueType, IndexType>::get_submatrix_21()
 
 GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
     GKO_DECLARE_ARROW_WORKSPACE_GET_SUBMATRIX_21_KERNEL);
@@ -746,7 +747,7 @@ GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
 
 template <typename ValueType, typename IndexType>
 arrow_submatrix_22<ValueType, IndexType>* const
-arrow_lu_workspace<ValueType, IndexType>::get_submatrix_22()
+ArrowLuState<ValueType, IndexType>::get_submatrix_22()
 {
     return &mtx_.submtx_22_;
 }
@@ -754,7 +755,7 @@ arrow_lu_workspace<ValueType, IndexType>::get_submatrix_22()
 #define GKO_DECLARE_ARROW_WORKSPACE_GET_SUBMATRIX_22_KERNEL(ValueType, \
                                                             IndexType) \
     arrow_submatrix_22<ValueType, IndexType>* const                    \
-    arrow_lu_workspace<ValueType, IndexType>::get_submatrix_22()
+    ArrowLuState<ValueType, IndexType>::get_submatrix_22()
 
 GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
     GKO_DECLARE_ARROW_WORKSPACE_GET_SUBMATRIX_22_KERNEL);
@@ -762,7 +763,7 @@ GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
 
 template <typename ValueType, typename IndexType>
 arrow_partitions<IndexType>*
-arrow_lu_workspace<ValueType, IndexType>::get_partitions()
+ArrowLuState<ValueType, IndexType>::get_partitions()
 {
     return &this->get_matrix()->partitions_;
 }
@@ -770,7 +771,7 @@ arrow_lu_workspace<ValueType, IndexType>::get_partitions()
 #define GKO_DECLARE_ARROW_WORKSPACE_GET_PARTITIONS_KERNEL(ValueType, \
                                                           IndexType) \
     arrow_partitions<IndexType>*                                     \
-    arrow_lu_workspace<ValueType, IndexType>::get_partitions()
+    ArrowLuState<ValueType, IndexType>::get_partitions()
 
 GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
     GKO_DECLARE_ARROW_WORKSPACE_GET_PARTITIONS_KERNEL);

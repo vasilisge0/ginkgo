@@ -43,7 +43,7 @@ namespace factorization {
 const double PIVOT_THRESHOLD = 1e-11;
 const double PIVOT_AUGMENTATION = 1e-8;  // officially it is sqrt(eps)*||A||_1
 
-// Declaration of arrow_lu_workspace struct.
+// Declaration of ArrowLuState struct.
 
 
 /**
@@ -122,8 +122,8 @@ public:
          */
         bool GKO_FACTORY_PARAMETER_SCALAR(both_factors, true);
 
-        // arrow_lu_workspace<ValueType, IndexType> workspace;
-        std::shared_ptr<arrow_lu_workspace<ValueType, IndexType>>
+        // ArrowLuState<ValueType, IndexType> workspace;
+        std::shared_ptr<ArrowLuState<ValueType, IndexType>>
             GKO_FACTORY_PARAMETER_SCALAR(workspace, nullptr);
 
         // std::shared_ptr<matrix::Arrow<ValueType, IndexType>>
@@ -178,8 +178,7 @@ protected:
     std::unique_ptr<Composition<ValueType>> generate(
         const std::shared_ptr<const LinOp>& system_matrix, bool skip_sorting,
         bool both_factors, arrow_partitions<IndexType>& partitions,
-        std::shared_ptr<arrow_lu_workspace<ValueType, IndexType>> workspace)
-        const;
+        std::shared_ptr<ArrowLuState<ValueType, IndexType>> workspace) const;
 
     std::unique_ptr<Composition<ValueType>> generate(
         const std::shared_ptr<const LinOp>& system_matrix, bool skip_sorting,

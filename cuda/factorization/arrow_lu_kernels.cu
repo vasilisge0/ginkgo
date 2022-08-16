@@ -792,7 +792,7 @@ namespace arrow_lu {
 // void compute_factors(
 //    std::shared_ptr<const DefaultExecutor> exec,
 //    gko::matrix::Csr<ValueType, IndexType>* global_mtx,
-//    factorization::arrow_lu_workspace<ValueType, IndexType>* workspace)
+//    factorization::ArrowLuState<ValueType, IndexType>* workspace)
 //{
 //    factorize_submatrix_11(global_mtx, workspace->mtx_.submtx_11_,
 //                           workspace->mtx_.partitions_);
@@ -814,7 +814,7 @@ namespace arrow_lu {
 template <typename ValueType, typename IndexType>
 void compute_factors(
     std::shared_ptr<const DefaultExecutor> exec,
-    factorization::arrow_lu_workspace<ValueType, IndexType>* workspace,
+    factorization::ArrowLuState<ValueType, IndexType>* workspace,
     const gko::matrix::Csr<ValueType, IndexType>* mtx) GKO_NOT_IMPLEMENTED;
 
 GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
