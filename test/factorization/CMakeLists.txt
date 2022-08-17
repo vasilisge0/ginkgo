@@ -1,2 +1,2 @@
 ginkgo_create_common_test(cholesky_kernels)
-ginkgo_create_common_test(arrow_lu_kernels)
+ginkgo_create_common_test(lu_kernels DISABLE_EXECUTORS dpcpp)

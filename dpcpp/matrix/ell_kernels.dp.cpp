@@ -120,8 +120,8 @@ void spmv_kernel(
     const size_type stride, const size_type num_stored_elements_per_row,
     acc::range<b_accessor> b, OutputValueType* __restrict__ c,
     const size_type c_stride, Closure op, sycl::nd_item<3> item_ct1,
-    UninitializedArray<OutputValueType,
-                       default_block_size / num_thread_per_worker>& storage)
+    uninitialized_array<OutputValueType,
+                        default_block_size / num_thread_per_worker>& storage)
 {
     const auto tidx = thread::get_thread_id_flat(item_ct1);
     const decltype(tidx) column_id = item_ct1.get_group(1);
@@ -193,8 +193,8 @@ void spmv(
     const size_type stride, const size_type num_stored_elements_per_row,
     acc::range<b_accessor> b, OutputValueType* __restrict__ c,
     const size_type c_stride, sycl::nd_item<3> item_ct1,
-    UninitializedArray<OutputValueType,
-                       default_block_size / num_thread_per_worker>& storage)
+    uninitialized_array<OutputValueType,
+                        default_block_size / num_thread_per_worker>& storage)
 {
     spmv_kernel<num_thread_per_worker, atomic>(
         num_rows, num_worker_per_row, val, col, stride,
@@ -214,8 +214,8 @@ void spmv(dim3 grid, dim3 block, size_type dynamic_shared_memory,
 {
     queue->submit([&](sycl::handler& cgh) {
         sycl::accessor<
-            UninitializedArray<OutputValueType,
-                               default_block_size / num_thread_per_worker>,
+            uninitialized_array<OutputValueType,
+                                default_block_size / num_thread_per_worker>,
             0, sycl::access_mode::read_write, sycl::access::target::local>
             storage_acc_ct1(cgh);
 
@@ -239,8 +239,8 @@ void spmv(
     const size_type num_stored_elements_per_row, acc::range<b_accessor> b,
     const OutputValueType* __restrict__ beta, OutputValueType* __restrict__ c,
     const size_type c_stride, sycl::nd_item<3> item_ct1,
-    UninitializedArray<OutputValueType,
-                       default_block_size / num_thread_per_worker>& storage)
+    uninitialized_array<OutputValueType,
+                        default_block_size / num_thread_per_worker>& storage)
 {
     const OutputValueType alpha_val = alpha(0);
     const OutputValueType beta_val = beta[0];
@@ -281,8 +281,8 @@ void spmv(dim3 grid, dim3 block, size_type dynamic_shared_memory,
 {
     queue->submit([&](sycl::handler& cgh) {
         sycl::accessor<
-            UninitializedArray<OutputValueType,
-                               default_block_size / num_thread_per_worker>,
+            uninitialized_array<OutputValueType,
+                                default_block_size / num_thread_per_worker>,
             0, sycl::access_mode::read_write, sycl::access::target::local>
             storage_acc_ct1(cgh);
 
@@ -304,8 +304,9 @@ void spmv(dim3 grid, dim3 block, size_type dynamic_shared_memory,
 namespace {
 
 
-template <int info, typename InputValueType, typename MatrixValueType,
-          typename OutputValueType, typename IndexType>
+template <int info, typename DeviceConfig, typename InputValueType,
+          typename MatrixValueType, typename OutputValueType,
+          typename IndexType>
 void abstract_spmv(syn::value_list<int, info>,
                    std::shared_ptr<const DpcppExecutor> exec,
                    int num_worker_per_row,
@@ -364,7 +365,7 @@ void abstract_spmv(syn::value_list<int, info>,
     }
 }
 
-GKO_ENABLE_IMPLEMENTATION_SELECTION(select_abstract_spmv, abstract_spmv);
+GKO_ENABLE_IMPLEMENTATION_TWO_SELECTION(select_abstract_spmv, abstract_spmv);
 
 
 template <typename ValueType, typename IndexType>
@@ -432,10 +433,12 @@ void spmv(std::shared_ptr<const DpcppExecutor> exec,
         dense::fill(exec, c, zero<OutputValueType>());
     }
     select_abstract_spmv(
-        compiled_kernels(),
+        syn::type_list<device_config<512, 32>, device_config<1024, 32>>(),
+        [](auto cfg) { return 1024 == cfg.block_size; }, compiled_kernels(),
         [&info](int compiled_info) { return info == compiled_info; },
-        syn::value_list<int>(), syn::type_list<>(), exec, num_worker_per_row, a,
-        b, c);
+        ::gko::syn::value_list<bool>(), ::gko::syn::value_list<int>(),
+        ::gko::syn::value_list<gko::size_type>(), ::gko::syn::type_list<>(),
+        exec, num_worker_per_row, a, b, c);
 }
 
 GKO_INSTANTIATE_FOR_EACH_MIXED_VALUE_AND_INDEX_TYPE(
@@ -466,10 +469,12 @@ void advanced_spmv(std::shared_ptr<const DpcppExecutor> exec,
         dense::scale(exec, beta, c);
     }
     select_abstract_spmv(
-        compiled_kernels(),
+        syn::type_list<device_config<512, 32>, device_config<1024, 32>>(),
+        [](auto cfg) { return 512 == cfg.block_size; }, compiled_kernels(),
         [&info](int compiled_info) { return info == compiled_info; },
-        syn::value_list<int>(), syn::type_list<>(), exec, num_worker_per_row, a,
-        b, c, alpha, beta);
+        ::gko::syn::value_list<bool>(), ::gko::syn::value_list<int>(),
+        ::gko::syn::value_list<gko::size_type>(), ::gko::syn::type_list<>(),
+        exec, num_worker_per_row, a, b, c, alpha, beta);
 }
 
 GKO_INSTANTIATE_FOR_EACH_MIXED_VALUE_AND_INDEX_TYPE(

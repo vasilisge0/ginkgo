@@ -220,8 +220,8 @@ void multinorm2_kernel(
     const ValueType* __restrict__ next_krylov_basis,
     size_type stride_next_krylov, remove_complex<ValueType>* __restrict__ norms,
     const stopping_status* __restrict__ stop_status, sycl::nd_item<3> item_ct1,
-    UninitializedArray<remove_complex<ValueType>,
-                       default_dot_dim*(default_dot_dim + 1)>*
+    uninitialized_array<remove_complex<ValueType>,
+                        default_dot_dim*(default_dot_dim + 1)>*
         reduction_helper_array)
 {
     using rc_vtype = remove_complex<ValueType>;
@@ -271,8 +271,8 @@ void multinorm2_kernel(dim3 grid, dim3 block, size_type dynamic_shared_memory,
 {
     queue->submit([&](sycl::handler& cgh) {
         sycl::accessor<
-            UninitializedArray<remove_complex<ValueType>,
-                               default_dot_dim*(default_dot_dim + 1)>,
+            uninitialized_array<remove_complex<ValueType>,
+                                default_dot_dim*(default_dot_dim + 1)>,
             0, sycl::access_mode::read_write, sycl::access::target::local>
             reduction_helper_array_acc_ct1(cgh);
 
@@ -295,8 +295,8 @@ void multinorminf_without_stop_kernel(
     const ValueType* __restrict__ next_krylov_basis,
     size_type stride_next_krylov, remove_complex<ValueType>* __restrict__ norms,
     size_type stride_norms, sycl::nd_item<3> item_ct1,
-    UninitializedArray<remove_complex<ValueType>,
-                       default_dot_dim*(default_dot_dim + 1)>*
+    uninitialized_array<remove_complex<ValueType>,
+                        default_dot_dim*(default_dot_dim + 1)>*
         reduction_helper_array)
 {
     using rc_vtype = remove_complex<ValueType>;
@@ -348,8 +348,8 @@ void multinorminf_without_stop_kernel(
 {
     queue->submit([&](sycl::handler& cgh) {
         sycl::accessor<
-            UninitializedArray<remove_complex<ValueType>,
-                               default_dot_dim*(default_dot_dim + 1)>,
+            uninitialized_array<remove_complex<ValueType>,
+                                default_dot_dim*(default_dot_dim + 1)>,
             0, sycl::access_mode::read_write, sycl::access::target::local>
             reduction_helper_array_acc_ct1(cgh);
 
@@ -375,9 +375,9 @@ void multinorm2_inf_kernel(
     remove_complex<ValueType>* __restrict__ norms1,
     remove_complex<ValueType>* __restrict__ norms2,
     const stopping_status* __restrict__ stop_status, sycl::nd_item<3> item_ct1,
-    UninitializedArray<remove_complex<ValueType>,
-                       (1 + compute_inf) *
-                           default_dot_dim*(default_dot_dim + 1)>*
+    uninitialized_array<remove_complex<ValueType>,
+                        (1 + compute_inf) *
+                            default_dot_dim*(default_dot_dim + 1)>*
         reduction_helper_array)
 {
     using rc_vtype = remove_complex<ValueType>;
@@ -450,9 +450,9 @@ void multinorm2_inf_kernel(
 {
     queue->submit([&](sycl::handler& cgh) {
         sycl::accessor<
-            UninitializedArray<remove_complex<ValueType>,
-                               (1 + compute_inf) *
-                                   default_dot_dim*(default_dot_dim + 1)>,
+            uninitialized_array<remove_complex<ValueType>,
+                                (1 + compute_inf) *
+                                    default_dot_dim*(default_dot_dim + 1)>,
             0, sycl::access_mode::read_write, sycl::access::target::local>
             reduction_helper_array_acc_ct1(cgh);
 
@@ -476,7 +476,7 @@ void multidot_kernel(
     size_type stride_next_krylov, const Accessor3d krylov_bases,
     ValueType* __restrict__ hessenberg_iter, size_type stride_hessenberg,
     const stopping_status* __restrict__ stop_status, sycl::nd_item<3> item_ct1,
-    UninitializedArray<ValueType, dot_dim * dot_dim>& reduction_helper_array)
+    uninitialized_array<ValueType, dot_dim * dot_dim>& reduction_helper_array)
 {
     /*
      * In general in this kernel:
@@ -543,7 +543,7 @@ void multidot_kernel(dim3 grid, dim3 block, size_type dynamic_shared_memory,
                      const stopping_status* stop_status)
 {
     queue->submit([&](sycl::handler& cgh) {
-        sycl::accessor<UninitializedArray<ValueType, dot_dim * dot_dim>, 0,
+        sycl::accessor<uninitialized_array<ValueType, dot_dim * dot_dim>, 0,
                        sycl::access_mode::read_write,
                        sycl::access::target::local>
             reduction_helper_array_acc_ct1(cgh);
@@ -567,7 +567,7 @@ void singledot_kernel(
     size_type stride_next_krylov, const Accessor3d krylov_bases,
     ValueType* __restrict__ hessenberg_iter, size_type stride_hessenberg,
     const stopping_status* __restrict__ stop_status, sycl::nd_item<3> item_ct1,
-    UninitializedArray<ValueType, block_size>& reduction_helper_array)
+    uninitialized_array<ValueType, block_size>& reduction_helper_array)
 {
     /*
      * In general in this kernel:
@@ -624,7 +624,7 @@ void singledot_kernel(dim3 grid, dim3 block, size_type dynamic_shared_memory,
                       const stopping_status* stop_status)
 {
     queue->submit([&](sycl::handler& cgh) {
-        sycl::accessor<UninitializedArray<ValueType, block_size>, 0,
+        sycl::accessor<uninitialized_array<ValueType, block_size>, 0,
                        sycl::access_mode::read_write,
                        sycl::access::target::local>
             reduction_helper_array_acc_ct1(cgh);
@@ -992,7 +992,8 @@ void initialize_2(std::shared_ptr<const DpcppExecutor> exec,
                   matrix::Dense<remove_complex<ValueType>>* arnoldi_norm,
                   Accessor3d krylov_bases,
                   matrix::Dense<ValueType>* next_krylov_basis,
-                  array<size_type>* final_iter_nums, size_type krylov_dim)
+                  array<size_type>* final_iter_nums, array<char>& tmp,
+                  size_type krylov_dim)
 {
     constexpr bool use_scalar =
         gko::cb_gmres::detail::has_3d_scaled_accessor<Accessor3d>::value;
@@ -1006,7 +1007,6 @@ void initialize_2(std::shared_ptr<const DpcppExecutor> exec,
     const dim3 block_dim(default_block_size, 1, 1);
     constexpr auto block_size = default_block_size;
     const auto stride_arnoldi = arnoldi_norm->get_stride();
-    array<char> tmp{exec};
 
     initialize_2_1_kernel<block_size>(
         grid_dim_1, block_dim, 0, exec->get_queue(), residual->get_size()[0],

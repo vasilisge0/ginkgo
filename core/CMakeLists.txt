@@ -24,6 +24,7 @@ target_sources(ginkgo
     factorization/arrow_lu.cpp
     log/convergence.cpp
     log/logger.cpp
+    log/performance_hint.cpp
     log/record.cpp
     log/stream.cpp
     matrix/coo.cpp

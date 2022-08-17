@@ -110,6 +110,12 @@ public:
          *       here. But currently, there is no need to use it.
          */
         gko::size_type GKO_FACTORY_PARAMETER_SCALAR(num_rhs, 1u);
+
+        /**
+         * Should the solver use the values on the diagonal of the system matrix
+         * (false) or should it assume they are 1.0 (true)?
+         */
+        bool GKO_FACTORY_PARAMETER_SCALAR(unit_diagonal, false);
     };
     GKO_ENABLE_LIN_OP_FACTORY(UpperTrs, parameters, Factory);
     GKO_ENABLE_BUILD_METHOD(Factory);
@@ -175,6 +181,29 @@ protected:
 
 private:
     std::shared_ptr<solver::SolveStruct> solve_struct_;
+};
+
+
+template <typename ValueType, typename IndexType>
+struct workspace_traits<UpperTrs<ValueType, IndexType>> {
+    using Solver = UpperTrs<ValueType, IndexType>;
+    // number of vectors used by this workspace
+    static int num_vectors(const Solver&);
+    // number of arrays used by this workspace
+    static int num_arrays(const Solver&);
+    // array containing the num_vectors names for the workspace vectors
+    static std::vector<std::string> op_names(const Solver&);
+    // array containing the num_arrays names for the workspace vectors
+    static std::vector<std::string> array_names(const Solver&);
+    // array containing all varying scalar vectors (independent of problem size)
+    static std::vector<int> scalars(const Solver&);
+    // array containing all varying vectors (dependent on problem size)
+    static std::vector<int> vectors(const Solver&);
+
+    // transposed input vector
+    constexpr static int transposed_b = 0;
+    // transposed output vector
+    constexpr static int transposed_x = 1;
 };
 
 

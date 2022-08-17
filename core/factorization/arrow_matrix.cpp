@@ -4,136 +4,75 @@
 #include "core/factorization/arrow_lu_kernels.hpp"
 #include "core/factorization/arrow_matrix.hpp"
 
+// #ifndef ARROW_MATRIX_HPP
+// #define ARROW_MATRIX_HPP
+// #include <ginkgo/core/base/executor.hpp>
+// #include <ginkgo/core/base/types.hpp>
+// #include <ginkgo/core/matrix/csr.hpp>
+// #include <memory>
+// #include <ginkgo/core/base/array.hpp>
+// #include <ginkgo/core/base/exception_helpers.hpp>
+// #include <ginkgo/core/base/lin_op.hpp>
+// #include <ginkgo/core/base/math.hpp>
+// #include <ginkgo/core/base/types.hpp>
+// #include <ginkgo/core/log/logger.hpp>
+// #include <ginkgo/core/matrix/dense.hpp>
+// #include <ginkgo/core/matrix/identity.hpp>
+// #include <ginkgo/core/solver/solver_base.hpp>
+// #include <ginkgo/core/stop/combined.hpp>
+// #include <ginkgo/core/stop/criterion.hpp>
+// #include <vector>
 
 namespace gko {
 namespace factorization {
 
-
 template <typename IndexType>
-block_csr_storage<IndexType>::block_csr_storage(
-    std::shared_ptr<const Executor> exec, IndexType num_elems_in,
-    IndexType num_blocks_in)
-{
-    num_elems = num_elems_in;
-    num_blocks_in = num_blocks_in;
-    array<IndexType> rows = {exec, num_elems};
-    array<IndexType> row_ptrs = {exec, num_elems};
-    array<IndexType> block_ptrs = {exec, num_blocks};
-}
+struct block_csr_storage {
+    size_type num_elems;
+    size_type num_blocks;
+    array<IndexType> rows;
+    array<IndexType> row_ptrs;
+    array<IndexType> block_ptrs;
 
-#define GKO_DECLARE_BLOCK_CSR_STORAGE_CONSTRUCTOR_0_KERNEL(IndexType) \
-    block_csr_storage<IndexType>::block_csr_storage(                  \
-        std::shared_ptr<const Executor> exec, IndexType num_elems_in, \
-        IndexType num_blocks_in);
+    block_csr_storage<IndexType>::block_csr_storage(
+        std::shared_ptr<const Executor> exec, IndexType num_elems_in,
+        IndexType num_blocks_in)
+    {
+        num_elems = num_elems_in;
+        num_blocks_in = num_blocks_in;
+        array<IndexType> rows = {exec, num_elems};
+        array<IndexType> row_ptrs = {exec, num_elems};
+        array<IndexType> block_ptrs = {exec, num_blocks};
+    }
 
-GKO_INSTANTIATE_FOR_EACH_INDEX_TYPE(
-    GKO_DECLARE_BLOCK_CSR_STORAGE_CONSTRUCTOR_0_KERNEL);
+    block_csr_storage<IndexType>::block_csr_storage(
+        array<IndexType>& rows_in, array<IndexType>& row_ptrs_in,
+        array<IndexType>& block_ptrs_in)
+    {
+        num_elems = rows_in.get_num_elems();
+        num_blocks = block_ptrs.get_num_elems();
+        rows = std::move(rows_in);
+        row_ptrs = std::move(row_ptrs_in);
+        block_ptrs = std::move(block_ptrs_in);
+    }
 
+    block_csr_storage<IndexType>::block_csr_storage(
+        std::shared_ptr<const Executor> exec, IndexType num_elems_in,
+        IndexType num_blocks_in, IndexType* rows_in, IndexType* row_ptrs_in,
+        IndexType* block_row_ptrs_in)
+    {
+        num_elems = num_elems_in;
+        num_blocks = num_blocks_in;
+        rows = {exec, static_cast<size_type>(num_elems), rows_in};
+        row_ptrs = {exec, static_cast<size_type>(num_elems), row_ptrs_in};
+        row_ptrs = {exec, static_cast<size_type>(num_elems), row_ptrs_in};
+        block_ptrs = {exec, static_cast<size_type>(num_blocks_in) + 1,
+                      block_row_ptrs_in};
+    }
 
-template <typename IndexType>
-block_csr_storage<IndexType>::block_csr_storage(array<IndexType>& rows_in,
-                                                array<IndexType>& row_ptrs_in,
-                                                array<IndexType>& block_ptrs_in)
-{
-    num_elems = rows_in.get_num_elems();
-    num_blocks = block_ptrs.get_num_elems();
-    rows = std::move(rows_in);
-    row_ptrs = std::move(row_ptrs_in);
-    block_ptrs = std::move(block_ptrs_in);
-}
-
-#define GKO_DECLARE_BLOCK_CSR_STORAGE_CONSTRUCTOR_1_KERNEL(IndexType) \
-    block_csr_storage<IndexType>::block_csr_storage(                  \
-        array<IndexType>& rows_in, array<IndexType>& row_ptrs_in,     \
-        array<IndexType>& block_ptrs_in);
-
-GKO_INSTANTIATE_FOR_EACH_INDEX_TYPE(
-    GKO_DECLARE_BLOCK_CSR_STORAGE_CONSTRUCTOR_1_KERNEL);
-
-
-template <typename IndexType>
-block_csr_storage<IndexType>::block_csr_storage(
-    std::shared_ptr<const Executor> exec, IndexType num_elems_in,
-    IndexType num_blocks_in, IndexType* rows_in, IndexType* row_ptrs_in,
-    IndexType* block_row_ptrs_in)
-{
-    num_elems = num_elems_in;
-    num_blocks = num_blocks_in;
-    rows = {exec, static_cast<size_type>(num_elems), rows_in};
-    row_ptrs = {exec, static_cast<size_type>(num_elems), row_ptrs_in};
-    row_ptrs = {exec, static_cast<size_type>(num_elems), row_ptrs_in};
-    block_ptrs = {exec, static_cast<size_type>(num_blocks_in) + 1,
-                  block_row_ptrs_in};
-}
-
-#define GKO_DECLARE_BLOCK_CSR_STORAGE_CONSTRUCTOR_2_KERNEL(IndexType)        \
-    block_csr_storage<IndexType>::block_csr_storage(                         \
-        std::shared_ptr<const Executor> exec, IndexType num_elems_in,        \
-        IndexType num_blocks_in, IndexType* rows_in, IndexType* row_ptrs_in, \
-        IndexType* block_row_ptrs_in);
-
-GKO_INSTANTIATE_FOR_EACH_INDEX_TYPE(
-    GKO_DECLARE_BLOCK_CSR_STORAGE_CONSTRUCTOR_2_KERNEL);
-
-
-template <typename ValueType, typename IndexType>
-arrow_matrix<ValueType, IndexType>::arrow_matrix(
-    std::shared_ptr<matrix::Csr<ValueType, IndexType>> mtx,
-    std::ifstream& infile)
-    : partitions_(mtx->get_executor(), infile),
-      submtx_11_(mtx, partitions_),
-      submtx_12_(mtx, submtx_11_, partitions_),
-      submtx_21_(mtx, submtx_11_, partitions_),
-      submtx_22_(mtx, submtx_11_, submtx_12_, submtx_21_, partitions_)
-{}
-
-#define GKO_DECLARE_ARROW_MATRIX_0_KERNEL(ValueType, IndexType) \
-    arrow_matrix<ValueType, IndexType>::arrow_matrix(           \
-        std::shared_ptr<matrix::Csr<ValueType, IndexType>> mtx, \
-        std::ifstream& infile);
-
-GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
-    GKO_DECLARE_ARROW_MATRIX_0_KERNEL);
-
-
-template <typename ValueType, typename IndexType>
-arrow_matrix<ValueType, IndexType>::arrow_matrix(
-    std::shared_ptr<matrix::Csr<ValueType, IndexType>> mtx,
-    arrow_partitions<IndexType>& partitions)
-    : partitions_(partitions),
-      submtx_11_(mtx, partitions_),
-      submtx_12_(mtx, submtx_11_, partitions_),
-      submtx_21_(mtx, submtx_11_, partitions_),
-      submtx_22_(mtx, submtx_11_, submtx_12_, submtx_21_, partitions_)
-{}
-
-#define GKO_DECLARE_ARROW_MATRIX_1_KERNEL(ValueType, IndexType) \
-    arrow_matrix<ValueType, IndexType>::arrow_matrix(           \
-        std::shared_ptr<matrix::Csr<ValueType, IndexType>> mtx, \
-        arrow_partitions<IndexType>& partitions);
-
-GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
-    GKO_DECLARE_ARROW_MATRIX_1_KERNEL);
-
-
-template <typename ValueType, typename IndexType>
-arrow_matrix<ValueType, IndexType>::arrow_matrix(
-    std::shared_ptr<matrix::Csr<ValueType, IndexType>> mtx,
-    gko::array<IndexType>& partition_idxs, IndexType split_index_in)
-    : partitions_(partition_idxs, split_index_in),
-      submtx_11_(mtx, partitions_),
-      submtx_12_(mtx, submtx_11_, partitions_),
-      submtx_21_(mtx, submtx_11_, partitions_),
-      submtx_22_(mtx, submtx_11_, submtx_12_, submtx_21_, partitions_)
-{}
-
-#define GKO_DECLARE_ARROW_MATRIX_2_KERNEL(ValueType, IndexType) \
-    arrow_matrix<ValueType, IndexType>::arrow_matrix(           \
-        std::shared_ptr<matrix::Csr<ValueType, IndexType>> mtx, \
-        gko::array<IndexType>& partition_idxs, IndexType split_index_in);
-
-GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
-    GKO_DECLARE_ARROW_MATRIX_2_KERNEL);
+    void reset_block_ptrs();
+    void resize();
+};
 
 
 template <typename ValueType, typename IndexType>
@@ -775,6 +714,56 @@ ArrowLuState<ValueType, IndexType>::get_partitions()
 
 GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
     GKO_DECLARE_ARROW_WORKSPACE_GET_PARTITIONS_KERNEL);
+
+template <typename ValueType, typename IndexType>
+struct ArrowLuState {
+private:
+public:
+    using Csr = matrix : Csr;
+    std::shared_ptr<const Executor> exec;
+    shared_ptr<Arrow<ValueType, IndexType>> mtx;
+    shared_ptr<Arrow<ValueType, IndexType>> l_factor;
+    shared_ptr<Arrow<ValueType, IndexType>> u_factor;
+
+    ArrowLuState(std::shared_ptr<const DefaultExecutor> exec,
+                 std::shared_ptr<Csr<ValueType, IndexType>> mtx,
+                 array<IndexType>& partitions);
+    ArrowLuState(std::shared_ptr<Csr<ValueType, IndexType>> mtx,
+                 std::ifstream& instream);
+    ArrowLuState(std::shared_ptr<Csr<ValueType, IndexType>> mtx,
+                 gko::array<IndexType>& partitions, IndexType split_index_in);
+
+    void compute_factors()
+    {
+        // array<IndexType> row_ptrs_src_cur_array = {exec,
+        // ws->submtx_01->get_size()[0] + 1}; array<IndexType>
+        // row_ptrs_dst_cur_array = {exec, ws->submtx_01->get_size()[0] + 1};
+        // array<IndexType> col_ptrs_dst_cur_array = {exec,
+        // ws->submtx_01->get_size()[0] + 1}; initialize_submatrix_11(exec,
+        // ws->mtx, ws->l_factor, ws->u_factor); preprocess_submatrix_12(exec,
+        // partitions, mtx, submtx_12,
+        //                         row_ptrs_src_cur_array,
+        //                         row_ptrs_dst_cur_array);
+        // initialize_submatrix_12(exec, partitions, mtx, submtx_12,
+        //                         row_ptrs_src_cur_array);
+        //                         preprocess_submatrix_21(exec, partitions,
+        //                         mtx, submtx_21, col_ptrs_dst_cur_array,
+        //                         row_ptrs_src_cur_array);
+        // initialize_submatrix_21(exec, partitions, mtx, submtx_21);
+        // initialize_submatrix_22(exec, partitions, submtx_11, submtx_12,
+        // submtx_21,
+        //                         submtx_22);
+
+        factorize_submatrix_00(exec, mtx->get_submatrix_00(),
+                               l_factor->get_submatrix_00(),
+                               u_factor->get_submatrix_00());
+        factorize_submatrix_01(exec, mtx->get_submatrix_00(),
+                               u_factor->get_submatrix_01());
+        factorize_submatrix_01(exec, mtx->get_submatrix_00(),
+                               l_factor->get_submatrix_10());
+        factorize_submatrix_11(exec, mtx->get_submatrix_11());
+    }
+};
 
 
 }  // namespace factorization

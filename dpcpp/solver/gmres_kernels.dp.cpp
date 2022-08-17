@@ -149,7 +149,7 @@ void multidot_kernel(
     const ValueType* __restrict__ next_krylov_basis, size_type stride_krylov,
     ValueType* __restrict__ hessenberg_iter, size_type stride_hessenberg,
     const stopping_status* __restrict__ stop_status, sycl::nd_item<3> item_ct1,
-    UninitializedArray<ValueType, default_dot_dim*(default_dot_dim + 1)>*
+    uninitialized_array<ValueType, default_dot_dim*(default_dot_dim + 1)>*
         reduction_helper_array)
 {
     const auto tidx = item_ct1.get_local_id(2);
@@ -200,8 +200,8 @@ void multidot_kernel(dim3 grid, dim3 block, size_type dynamic_shared_memory,
                      const stopping_status* stop_status)
 {
     queue->submit([&](sycl::handler& cgh) {
-        sycl::accessor<UninitializedArray<ValueType, default_dot_dim*(
-                                                         default_dot_dim + 1)>,
+        sycl::accessor<uninitialized_array<ValueType, default_dot_dim*(
+                                                          default_dot_dim + 1)>,
                        0, sycl::access_mode::read_write,
                        sycl::access::target::local>
             reduction_helper_array_acc_ct1(cgh);
@@ -214,8 +214,8 @@ void multidot_kernel(dim3 grid, dim3 block, size_type dynamic_shared_memory,
                     k, num_rows, num_cols, krylov_bases, next_krylov_basis,
                     stride_krylov, hessenberg_iter, stride_hessenberg,
                     stop_status, item_ct1,
-                    (UninitializedArray<ValueType,
-                                        default_dot_dim*(default_dot_dim + 1)>*)
+                    (uninitialized_array<ValueType, default_dot_dim*(
+                                                        default_dot_dim + 1)>*)
                         reduction_helper_array_acc_ct1.get_pointer());
             });
     });
@@ -279,7 +279,7 @@ void update_hessenberg_2_kernel(
     size_type stride_next_krylov, ValueType* __restrict__ hessenberg_iter,
     size_type stride_hessenberg,
     const stopping_status* __restrict__ stop_status, sycl::nd_item<3> item_ct1,
-    UninitializedArray<ValueType, block_size>& reduction_helper_array)
+    uninitialized_array<ValueType, block_size>& reduction_helper_array)
 {
     const auto tidx = item_ct1.get_local_id(2);
     const auto col_idx = item_ct1.get_group(2);
@@ -301,8 +301,9 @@ void update_hessenberg_2_kernel(
         reduction_helper[tidx] = local_res;
 
         // Perform thread block reduction. Result is in reduction_helper[0]
-        reduce(group::this_thread_block(item_ct1), reduction_helper,
-               [](const ValueType& a, const ValueType& b) { return a + b; });
+        ::gko::kernels::dpcpp::reduce(
+            group::this_thread_block(item_ct1), reduction_helper,
+            [](const ValueType& a, const ValueType& b) { return a + b; });
 
         if (tidx == 0) {
             hessenberg_iter[(iter + 1) * stride_hessenberg + col_idx] =
@@ -320,7 +321,7 @@ void update_hessenberg_2_kernel(
     const stopping_status* stop_status)
 {
     queue->submit([&](sycl::handler& cgh) {
-        sycl::accessor<UninitializedArray<ValueType, block_size>, 0,
+        sycl::accessor<uninitialized_array<ValueType, block_size>, 0,
                        sycl::access_mode::read_write,
                        sycl::access::target::local>
             reduction_helper_array_acc_ct1(cgh);
@@ -469,7 +470,8 @@ void initialize_2(std::shared_ptr<const DpcppExecutor> exec,
                   matrix::Dense<remove_complex<ValueType>>* residual_norm,
                   matrix::Dense<ValueType>* residual_norm_collection,
                   matrix::Dense<ValueType>* krylov_bases,
-                  array<size_type>* final_iter_nums, size_type krylov_dim)
+                  array<size_type>* final_iter_nums, array<char>& tmp,
+                  size_type krylov_dim)
 {
     const auto num_rows = residual->get_size()[0];
     const auto num_rhs = residual->get_size()[1];
@@ -479,7 +481,6 @@ void initialize_2(std::shared_ptr<const DpcppExecutor> exec,
         1, 1);
     const dim3 block_dim(default_block_size, 1, 1);
     constexpr auto block_size = default_block_size;
-    array<char> tmp{exec};
 
     kernels::dpcpp::dense::compute_norm2_dispatch(exec, residual, residual_norm,
                                                   tmp);

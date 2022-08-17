@@ -58,10 +58,10 @@ namespace dpcpp {
  * @tparam size the size of the array
  */
 template <typename ValueType, size_type size>
-class UninitializedArray {
+class uninitialized_array {
 public:
     /**
-     * Operator for casting an UninitializedArray into its constexpr value
+     * Operator for casting an uninitialized_array into its constexpr value
      * pointer.
      *
      * @return the constexpr pointer to the first entry of the array.
@@ -72,7 +72,7 @@ public:
     }
 
     /**
-     * Operator for casting an UninitializedArray into its non-const value
+     * Operator for casting an uninitialized_array into its non-const value
      * pointer.
      *
      * @return the non-const pointer to the first entry of the array.
@@ -87,8 +87,8 @@ public:
      *
      * @return a reference to the array entry at the given index.
      */
-    constexpr __dpct_inline__ const ValueType& operator[](size_type pos) const
-        noexcept
+    constexpr __dpct_inline__ const ValueType& operator[](
+        size_type pos) const noexcept
     {
         return data_[pos];
     }
