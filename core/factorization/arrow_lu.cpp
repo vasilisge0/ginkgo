@@ -30,27 +30,44 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ******************************<GINKGO LICENSE>*******************************/
 
+// #include <ginkgo/core/factorization/arrow_lu.hpp>
+
+
+// #include <memory>
+
+// #include <ginkgo/core/base/array.hpp>
+// #include <ginkgo/core/base/composition.hpp>
+// #include <ginkgo/core/base/lin_op.hpp>
+// #include <ginkgo/core/base/exception_helpers.hpp>
+// #include <ginkgo/core/base/polymorphic_object.hpp>
+// #include <ginkgo/core/base/types.hpp>
+// #include <ginkgo/core/matrix/coo.hpp>
+// #include <ginkgo/core/matrix/csr.hpp>
 #include <ginkgo/core/factorization/arrow_lu.hpp>
+
+
+// #include "core/components/format_conversion_kernels.hpp"
+// #include "core/factorization/arrow_lu_kernels.hpp"
+// #include "core/factorization/factorization_kernels.hpp"
+// #include "core/factorization/par_ic_kernels.hpp"
+// #include "core/factorization/par_ict_kernels.hpp"
+// #include "core/matrix/csr_kernels.hpp"
+
+
+// #include <ginkgo/core/factorization/ilu.hpp>
 
 
 #include <memory>
 
+
 #include <ginkgo/core/base/array.hpp>
-#include <ginkgo/core/base/composition.hpp>
 #include <ginkgo/core/base/exception_helpers.hpp>
-#include <ginkgo/core/base/polymorphic_object.hpp>
-#include <ginkgo/core/base/types.hpp>
-#include <ginkgo/core/matrix/coo.hpp>
-#include <ginkgo/core/matrix/csr.hpp>
-#include "core/factorization/arrow_matrix.hpp"
+#include <ginkgo/core/factorization/arrow_lu.hpp>
 
 
-#include "core/components/format_conversion_kernels.hpp"
+// #include "core/factorization/factorization_kernels.hpp"
 #include "core/factorization/arrow_lu_kernels.hpp"
-#include "core/factorization/factorization_kernels.hpp"
-#include "core/factorization/par_ic_kernels.hpp"
-#include "core/factorization/par_ict_kernels.hpp"
-#include "core/matrix/csr_kernels.hpp"
+
 
 // #include <ginkgo/core/matrix/arrow.hpp>
 
@@ -59,49 +76,102 @@ namespace factorization {
 namespace arrow_lu {
 namespace {
 
-GKO_REGISTER_OPERATION(add_diagonal_elements,
-                       factorization::add_diagonal_elements);
-GKO_REGISTER_OPERATION(initialize_row_ptrs_l,
-                       factorization::initialize_row_ptrs_l);
-GKO_REGISTER_OPERATION(initialize_l, factorization::initialize_l);
-GKO_REGISTER_OPERATION(init_factor, par_ic_factorization::init_factor);
-GKO_REGISTER_OPERATION(compute_factor, par_ic_factorization::compute_factor);
-GKO_REGISTER_OPERATION(csr_transpose, csr::transpose);
-GKO_REGISTER_OPERATION(convert_ptrs_to_idxs, components::convert_ptrs_to_idxs);
-GKO_REGISTER_OPERATION(compute_factors, arrow_lu::compute_factors);
-
+GKO_REGISTER_OPERATION(factorize_diagonal_submatrix,
+                       arrow_lu::factorize_diagonal_submatrix);
+GKO_REGISTER_OPERATION(factorize_off_diagonal_submatrix,
+                       arrow_lu::factorize_off_diagonal_submatrix);
+GKO_REGISTER_OPERATION(compute_schur_complement,
+                       arrow_lu::compute_schur_complement);
 
 }  // anonymous namespace
 }  // namespace arrow_lu
 
-// void
 
 template <typename ValueType, typename IndexType>
 std::unique_ptr<Composition<ValueType>> ArrowLu<ValueType, IndexType>::generate(
     const std::shared_ptr<const LinOp>& system_matrix,
-    array<IndexType>& partitions)
+    array<IndexType>& partitions) const
 {
     using CsrMatrix = matrix::Csr<ValueType, IndexType>;
     using CooMatrix = matrix::Coo<ValueType, IndexType>;
+    using ArrowMatrix = matrix::Arrow<ValueType, IndexType>;
 
-    GKO_ASSERT_IS_SQUARE_MATRIX(system_matrix);
+    // GKO_ASSERT_IS_SQUARE_MATRIX(arrow_system_matrix);
 
+    // Converts the system matrix to Arrow.
+    // Throws an exception if it is not convertible.
     const auto exec = this->get_executor();
 
-    // Converts the system matrix to CSR.
-    // Throws an exception if it is not convertible.
-    auto arrow_system_matrix = ArrowMatrix::create(exec);
-    as<ConvertibleTo<ArrowMatrix>>(system_matrix.get())
-        ->convert_to(arrow_system_matrix.get());
+    // conversion should be performed beforehand
+    // auto arrow_system_matrix = ArrowMatrix::create(exec, partitions);
+    auto arrow_system_matrix =
+        as<ArrowMatrix>(system_matrix);  // (!) note: dynamic_cast
+    const auto partition_idxs = arrow_system_matrix->get_const_partition_idxs();
+    const auto num_blocks = arrow_system_matrix->get_partitions_num_elems() - 1;
+    const auto split_index = partition_idxs[num_blocks];
+    array<IndexType> a_cur_row_ptrs = {exec, num_blocks + 1};
+    std::shared_ptr<matrix::Arrow<ValueType, IndexType>> l_factor;
+    std::shared_ptr<matrix::Arrow<ValueType, IndexType>> u_factor;
 
-    // exec->run(arrow_lu::make_compute_factors(parameters_.workspace.get(),
-    //                                          csr_system_matrix.get()));
+    // Wraps-up submatrices of arrow_system_matrix and l_factor and u_factor in
+    // collection_of_matrices objects.
+    gko::factorization::arrow_lu::collection_of_matrices<ValueType>
+        blocks_of_submatrix_00(arrow_system_matrix->get_submatrix_00().get());
+    gko::factorization::arrow_lu::collection_of_matrices<ValueType>
+        l_factors_of_submatrix_00(l_factor->get_submatrix_00().get());
+    gko::factorization::arrow_lu::collection_of_matrices<ValueType>
+        u_factors_of_submatrix_00(u_factor->get_submatrix_00().get());
+    gko::factorization::arrow_lu::collection_of_matrices<ValueType>
+        u_factors_of_submatrix_01(u_factor->get_submatrix_01().get());
+    gko::factorization::arrow_lu::collection_of_matrices<ValueType>
+        l_factors_of_submatrix_10(l_factor->get_submatrix_10().get());
+    gko::factorization::arrow_lu::collection_of_matrices<ValueType>
+        blocks_of_submatrix_11(arrow_system_matrix->get_submatrix_11().get());
+    gko::factorization::arrow_lu::collection_of_matrices<ValueType>
+        u_factors_of_submatrix_11(u_factor->get_submatrix_11().get());
+    gko::factorization::arrow_lu::collection_of_matrices<ValueType>
+        l_factors_of_submatrix_11(l_factor->get_submatrix_11().get());
+
+    // Factorizes blocks of submatrix_00.
+    exec->run(arrow_lu::make_factorize_diagonal_submatrix(
+        arrow_system_matrix->get_size(), static_cast<IndexType>(num_blocks),
+        partition_idxs, a_cur_row_ptrs.get_data(), &blocks_of_submatrix_00,
+        &l_factors_of_submatrix_00, &u_factors_of_submatrix_00));
+
+    // Factorizes blocks of submatrix_01.
+    exec->run(arrow_lu::make_factorize_off_diagonal_submatrix(
+        split_index, static_cast<IndexType>(num_blocks), partition_idxs,
+        &l_factors_of_submatrix_00, &u_factors_of_submatrix_01));
+
+    // Factorizes blocks of submatrix_10.
+    exec->run(arrow_lu::make_factorize_off_diagonal_submatrix(
+        split_index, static_cast<IndexType>(num_blocks), partition_idxs,
+        &u_factors_of_submatrix_00, &l_factors_of_submatrix_10));
+
+    // Computes schur complement.
+    exec->run(arrow_lu::make_compute_schur_complement(
+        static_cast<IndexType>(num_blocks), partition_idxs,
+        &l_factors_of_submatrix_10, &u_factors_of_submatrix_01,
+        &blocks_of_submatrix_11));
+
+    // Factorizes submatrix_11
+    IndexType one = 1;
+    array<IndexType> partitions_last = {exec, 2};
+    partitions_last.get_data()[0] = partitions.get_data()[num_blocks];
+    partitions_last.get_data()[0] = arrow_system_matrix->get_size()[0];
+    exec->run(arrow_lu::make_factorize_diagonal_submatrix(
+        arrow_system_matrix->get_size(), static_cast<IndexType>(1),
+        partitions_last.get_data(), a_cur_row_ptrs.get_data(),
+        &blocks_of_submatrix_11, &l_factors_of_submatrix_11,
+        &u_factors_of_submatrix_11));
+
+    return Composition<ValueType>::create(std::move(l_factor),
+                                          std::move(u_factor));
 }
 
-// template <typename ValueType,
-#define GKO_DECLARE_ARROWLU(ValueType, IndexType) \
+#define GKO_DECLARE_ARROWLU_KERNEL(ValueType, IndexType) \
     class ArrowLu<ValueType, IndexType>
-GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(GKO_DECLARE_ARROWLU);
+GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(GKO_DECLARE_ARROWLU_KERNEL);
 
 
 }  // namespace factorization

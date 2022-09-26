@@ -40,6 +40,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <ginkgo/core/base/array.hpp>
 #include <ginkgo/core/base/index_set.hpp>
 #include <ginkgo/core/base/types.hpp>
+#include <ginkgo/core/matrix/arrow.hpp>
 #include <ginkgo/core/matrix/coo.hpp>
 #include <ginkgo/core/matrix/dense.hpp>
 #include <ginkgo/core/matrix/diagonal.hpp>
@@ -120,6 +121,11 @@ namespace kernels {
     void convert_to_sellp(std::shared_ptr<const DefaultExecutor> exec,     \
                           const matrix::Csr<ValueType, IndexType>* source, \
                           matrix::Sellp<ValueType, IndexType>* result)
+
+#define GKO_DECLARE_CSR_CONVERT_TO_ARROW_KERNEL(ValueType, IndexType)      \
+    void convert_to_arrow(std::shared_ptr<const DefaultExecutor> exec,     \
+                          const matrix::Csr<ValueType, IndexType>* source, \
+                          matrix::Arrow<ValueType, IndexType>* result)
 
 #define GKO_DECLARE_CSR_TRANSPOSE_KERNEL(ValueType, IndexType)    \
     void transpose(std::shared_ptr<const DefaultExecutor> exec,   \
@@ -261,6 +267,8 @@ namespace kernels {
     GKO_DECLARE_CSR_CONVERT_TO_ELL_KERNEL(ValueType, IndexType);           \
     template <typename ValueType, typename IndexType>                      \
     GKO_DECLARE_CSR_CONVERT_TO_FBCSR_KERNEL(ValueType, IndexType);         \
+    template <typename ValueType, typename IndexType>                      \
+    GKO_DECLARE_CSR_CONVERT_TO_ARROW_KERNEL(ValueType, IndexType);         \
     template <typename ValueType, typename IndexType>                      \
     GKO_DECLARE_CSR_TRANSPOSE_KERNEL(ValueType, IndexType);                \
     template <typename ValueType, typename IndexType>                      \

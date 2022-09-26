@@ -32,6 +32,53 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #define PIVOT_AUGMENTATION 1e-8
 
+// Computes the dense LU factors of the diagonal blocks of submatrix_11.
+// template <typename ValueType, typename IndexType>
+// void factorize_diagonal_submatrix(
+//     std::shared_ptr<const DefaultExecutor> exec,
+//     dim<2> size,
+//     IndexType num_blocks,
+//     const IndexType* partitions,
+//     IndexType* a_cur_row_ptrs,
+//     const LinOp* a_linop,
+//     LinOp* l_factors,
+//     LinOp* u_factors)
+// {
+//     using dense = matrix::Dense<ValueType>;
+//     const auto stride = 1;
+//     for (auto block = 0; block < num_blocks; block++) {
+//         const auto block_length
+//             = static_cast<size_type>(partitions[block + 1] -
+//                                      partitions[block]);
+//         const dim<2> block_size = {block_length, block_length};
+
+//         auto a_submtx = share(dense::create(exec));
+//         as<ConvertibleTo<dense>>(a_linop[block])
+//             ->convert_to(a_submtx.get());
+
+//         auto l_submtx = share(dense::create(exec));
+//         as<ConvertibleTo<dense>>(l_factors[block])
+//             ->convert_to(l_submtx.get());
+
+//         auto u_submtx = share(dense::create(exec));
+//         as<ConvertibleTo<dense>>(u_factors[block])
+//             ->convert_to(u_submtx.get());
+
+//         factorize_kernel(a_submtx.get(), l_submtx.get(), u_submtx.get());
+//     }
+// }
+
+template <typename ValueType, typename IndexType>
+void factorize_diagonal_submatrix(std::shared_ptr<const DefaultExecutor> exec,
+                                  dim<2> size, IndexType num_blocks,
+                                  const IndexType* partitions,
+                                  IndexType* a_cur_row_ptrs,
+                                  const LinOp* a_linop, LinOp* l_factors,
+                                  LinOp* u_factors) GKO_NOT_IMPLEMENTED;
+
+GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
+    GKO_DECLARE_ARROW_LU_FACTORIZE_DIAGONAL_SUBMATRIX_KERNEL);
+
 // Checks rows row_start, ..., row_end of submatrix_12 and returns the entry
 // (row_min_out, col_min_out) as well as the number of entries with the same
 // column index, in variable num_occurences_out.

@@ -1,14 +1,14 @@
 #include <ginkgo/core/base/types.hpp>
 #include <ginkgo/core/factorization/arrow_lu.hpp>
+#include <ginkgo/core/matrix/csr.hpp>
 
 #include "core/components/prefix_sum_kernels.hpp"
 #include "core/factorization/arrow_lu_kernels.hpp"
 #include "core/factorization/arrow_matrix.hpp"
 
-
 namespace gko {
 namespace kernels {
-namespace omp {
+namespace reference {
 /**
  * @brief The ArrowLu namespace.
  *
@@ -16,51 +16,127 @@ namespace omp {
  */
 namespace arrow_lu {
 
-
-// Factorize kernels.
-template <typename ValueType>
-void factorize_kernel(const matrix::Dense<ValueType>* mtx,
-                      matrix::Dense<ValueType>* l_factor,
-                      matrix::Dense<ValueType>* u_factor)
+template <typename ValueType, typename IndexType>
+void copy_off_diagonal_block(IndexType split_index, gko::span row_span,
+                             IndexType col_min, IndexType* remaining_row_nnz_a,
+                             const ValueType* a_values,
+                             const IndexType* a_col_idxs,
+                             IndexType* a_cur_row_ptrs, ValueType* s_values,
+                             IndexType* s_col_idxs, IndexType* s_cur_row_ptrs)
 {
-    const auto mtx_values = mtx->get_const_values();
-    auto l_values = l_factor->get_values();
-    auto u_values = u_factor->get_values();
-
-    for (auto r = 0; r < l_factor->get_size()[0]; r++) {
-        for (auto c = 0; c < l_factor->get_size()[1]; c++) {
-            l_values[l_factor->get_size()[0] * r + c] = 0.0;
+    auto remaining_nnz = *remaining_row_nnz_a;
+    bool found_nz_col = false;
+    for (auto row = row_span.begin(); row < row_span.end(); row++) {
+        const auto row_index_a = a_cur_row_ptrs[row];
+        const auto col = a_col_idxs[row_index_a];
+        if (col == col_min) {
+            found_nz_col = true;
+            break;
         }
     }
 
-    for (auto r = 0; r < u_factor->get_size()[0]; r++) {
-        for (auto c = 0; c < u_factor->get_size()[1]; c++) {
-            u_values[u_factor->get_size()[0] * r + c] = 0.0;
+    if (found_nz_col) {
+        for (auto row = row_span.begin(); row < row_span.end(); row++) {
+            const auto row_index_a = a_cur_row_ptrs[row];
+            const auto col = a_col_idxs[row_index_a];
+            const auto row_index_s = s_cur_row_ptrs[row];
+            s_values[row_index_s] =
+                (col == col_min) ? a_values[row_index_a] : 0.0;
+            s_col_idxs[row_index_s] =
+                col_min - static_cast<IndexType>(split_index);
+            s_cur_row_ptrs[row] += 1;
+            if (col == col_min) {
+                remaining_nnz -= 1;
+                a_cur_row_ptrs[row] += 1;
+            }
         }
     }
-
-    for (auto i = 0; i < mtx->get_size()[0]; i++) {
-        ValueType pivot = mtx_values[mtx->get_size()[0] * i + i];
-        if (abs(pivot) < PIVOT_THRESHOLD) {
-            pivot += PIVOT_AUGMENTATION;
-        }
-
-        // store in row-major format
-        l_values[l_factor->get_size()[0] * i + i] = 1.0;
-        for (auto j = i + 1; j < mtx->get_size()[0]; j++) {
-            l_values[l_factor->get_size()[0] * j + i] =
-                mtx_values[mtx->get_size()[0] * j + i] / pivot;
-        }
-
-        // store in col-major format
-        u_values[u_factor->get_size()[0] * i + i] = pivot;
-        for (auto j = i + 1; j < mtx->get_size()[1]; j++) {
-            u_values[u_factor->get_size()[0] * j + i] =
-                mtx_values[mtx->get_size()[0] * j + i];
-        }
-    }
+    *remaining_row_nnz_a = remaining_nnz;
 }
 
+template <typename IndexType>
+void push_wavefront(dim<2> size, gko::span row_span, IndexType col_min,
+                    IndexType* remaining_row_nnz_a, const IndexType* a_col_idxs,
+                    const IndexType* a_row_ptrs, IndexType* a_cur_row_ptrs,
+                    IndexType* nnz_s, IndexType* cur_s_row_ptrs)
+{
+    bool found_nonzero_column = false;
+    auto nnz = *nnz_s;
+    auto remaining_nnz = *remaining_row_nnz_a;
+    auto len = row_span.end() - row_span.begin();
+    for (auto row = row_span.begin(); row < row_span.end(); row++) {
+        const auto row_index = a_cur_row_ptrs[row];
+        const auto col = a_col_idxs[row_index];
+        if ((col == col_min) && (a_cur_row_ptrs[row] < a_row_ptrs[row + 1])) {
+            a_cur_row_ptrs[row] += 1;
+            remaining_nnz -= 1;
+            found_nonzero_column = true;
+        }
+    }
+
+    if (found_nonzero_column) {
+        for (auto row = row_span.begin(); row < row_span.end(); row++) {
+            cur_s_row_ptrs[row + 1] += 1;
+        }
+    }
+    const auto col_max = static_cast<IndexType>(size[0]);
+    nnz = (found_nonzero_column && (col_min >= col_max)) ? nnz + len : nnz;
+    *remaining_row_nnz_a = remaining_nnz;
+    *nnz_s = nnz;
+}
+
+template <typename IndexType>
+IndexType compute_remaining_nnz_row_check(gko::span row_span,
+                                          const IndexType* row_ptrs,
+                                          IndexType* cur_row_ptrs)
+{
+    auto remaining_nnz = 0;
+    for (auto row = row_span.begin(); row < row_span.end(); row++) {
+        remaining_nnz += ((row_ptrs[row + 1] > cur_row_ptrs[row])
+                              ? row_ptrs[row + 1] - cur_row_ptrs[row]
+                              : 0);
+    }
+    return remaining_nnz;
+}
+
+template <typename IndexType>
+IndexType compute_remaining_nnz_col_check(gko::span row_span,
+                                          gko::span col_span,
+                                          const IndexType* col_idxs,
+                                          IndexType* cur_row_ptrs)
+{
+    IndexType remaining_nnz = 0;
+    for (auto row = row_span.begin(); row < row_span.end(); row++) {
+        auto row_index = cur_row_ptrs[row];
+        while ((col_idxs[row_index] < col_span.end()) &&
+               (row_index < cur_row_ptrs[row + 1])) {
+            cur_row_ptrs[row] += 1;
+            row_index = cur_row_ptrs[row];
+            remaining_nnz += 1;
+        }
+    }
+    return remaining_nnz;
+}
+
+template <typename IndexType>
+void find_min_col(dim<2> size, gko::span row_span, IndexType* col_min_out,
+                  const IndexType* col_idxs, const IndexType* row_ptrs,
+                  IndexType* cur_row_ptrs)
+{
+    const auto max_row = static_cast<IndexType>(size[0] + size[1]);
+    auto col_min = max_row;
+    IndexType num_occurences = 0;
+    for (auto row = row_span.begin(); row < row_span.end(); row++) {
+        const auto row_index = cur_row_ptrs[row];
+        const auto col = col_idxs[row_index];
+        col_min = ((col < col_min) && (row_index < row_ptrs[row + 1]))
+                      ? col
+                      : col_min;
+    }
+    *col_min_out = col_min;
+}
+
+// -- solve kernels --
 
 // Solves triangular system. L-factor is stored in row-major ordering.
 template <typename ValueType>
@@ -68,10 +144,9 @@ void lower_triangular_solve_kernel(dim<2> dim_l_factor,
                                    const ValueType* l_factor, dim<2> dim_rhs,
                                    ValueType* rhs_matrix)
 {
-    // Computes rhs_matrix[dim_rhs[1]*row + num_rhs] - dot_product[num_rhs]
+    // Computes rhs_matri[dim_rhs[1]*row + num_rhs] - dot_product[num_rhs]
     //  = l_factor[row*dim_l_factor[1] + col]*rhs_matrix[col * dim_rhs[1] +
-    //  num_rhs]
-    // for all rows and col = 0, ..., row-1
+    //  num_rhs] for all rows and col = 0, ..., row-1
     for (auto row = 0; row < dim_l_factor[0]; row++) {
         for (auto col = 0; col < row; col++) {
             for (auto num_rhs = 0; num_rhs < dim_rhs[1]; num_rhs++) {
@@ -83,14 +158,13 @@ void lower_triangular_solve_kernel(dim<2> dim_l_factor,
 
         // Computes (rhs_matri[dim_rhs[1]*row + num_rhs] - dot_product) / pivot.
         // Pivot = l_factor[dim_l_factor[0] * row + row];
-        auto pivot = l_factor[dim_l_factor[0] * row + row];
+        const auto pivot = l_factor[dim_l_factor[0] * row + row];
         for (auto num_rhs = 0; num_rhs < dim_rhs[1]; num_rhs++) {
             rhs_matrix[dim_rhs[1] * row + num_rhs] =
                 rhs_matrix[dim_rhs[1] * row + num_rhs] / pivot;
         }
     }
 }
-
 
 // Uses column-major ordering.
 template <typename ValueType>
@@ -116,7 +190,6 @@ void upper_triangular_solve_kernel(dim<2> dim_l_factor,
     }
 }
 
-
 // Uses column-major ordering
 template <typename ValueType>
 void upper_triangular_left_solve_kernel(dim<2> dim_l_factor,
@@ -141,932 +214,379 @@ void upper_triangular_left_solve_kernel(dim<2> dim_l_factor,
     }
 }
 
-
-// Converts spare matrix in CSR format to dense.
-template <typename ValueType, typename IndexType>
-void convert_csr_2_dense(dim<2> size, const IndexType* row_ptrs,
-                         const IndexType* col_idxs, const ValueType* values,
-                         matrix::Dense<ValueType>* dense_mtx,
-                         const IndexType col_start, const IndexType col_end)
+template <typename ValueType>
+void compute_dense_lu_kernel(const matrix::Dense<ValueType>* mtx,
+                             matrix::Dense<ValueType>* l_factor,
+                             matrix::Dense<ValueType>* u_factor)
 {
-    auto values_mtx = dense_mtx->get_values();
-    auto num_rows = dense_mtx->get_size()[0];
-    for (auto row_local = 0; row_local < size[0]; row_local++) {
-        IndexType col_old = -1;
-        auto row = row_local + col_start;
-        auto row_index = row_ptrs[row];
-        auto col_cur = col_idxs[row_index];
-        while ((col_cur < col_end) && (col_old < col_cur)) {
-            auto col_local = col_cur - col_start;
-            values_mtx[num_rows * row_local + col_local] = values[row_index];
-            col_old = col_cur;
-            row_index += 1;
-            col_cur = col_idxs[row_index];
+    const auto mtx_values = mtx->get_const_values();
+    auto l_values = l_factor->get_values();
+    auto u_values = u_factor->get_values();
+
+    for (auto r = 0; r < l_factor->get_size()[0]; r++) {
+        for (auto c = 0; c < l_factor->get_size()[1]; c++) {
+            l_values[l_factor->get_size()[0] * r + c] = 0.0;
+        }
+    }
+
+    for (auto r = 0; r < u_factor->get_size()[0]; r++) {
+        for (auto c = 0; c < u_factor->get_size()[1]; c++) {
+            u_values[u_factor->get_size()[0] * r + c] = 0.0;
+        }
+    }
+
+    for (auto i = 0; i < mtx->get_size()[0]; i++) {
+        ValueType pivot = mtx_values[mtx->get_size()[0] * i + i];
+        if (abs(pivot) < PIVOT_THRESHOLD) {
+            pivot += PIVOT_AUGMENTATION;
+        }
+
+        // Stores l_values in row-major format.
+        l_values[l_factor->get_size()[0] * i + i] = 1.0;
+        for (auto j = i + 1; j < mtx->get_size()[0]; j++) {
+            l_values[l_factor->get_size()[0] * j + i] =
+                mtx_values[mtx->get_size()[0] * j + i] / pivot;
+        }
+
+        // Stores u_values in col-major format.
+        u_values[u_factor->get_size()[0] * i + i] = pivot;
+        for (auto j = i + 1; j < mtx->get_size()[1]; j++) {
+            u_values[u_factor->get_size()[0] * j + i] =
+                mtx_values[mtx->get_size()[0] * j + i];
         }
     }
 }
 
-
-// Checks rows [row_start, ..., row_end] of submatrix_12 and returns the entry
-// (row_min_out, col_min_out) as well as the number of entries with the same
-// column index, in variable num_occurences_out.
-template <typename IndexType>
-void find_min_col(const IndexType* row_ptrs_mtx, const IndexType* col_idxs_mtx,
-                  IndexType* row_ptrs_cur, dim<2> size, IndexType row_start,
-                  IndexType row_end, IndexType* col_min_out,
-                  IndexType* row_min_out, IndexType* num_occurences_out)
-{
-    const auto max_row = static_cast<IndexType>(size[0] + size[1]);
-    auto col_min = max_row;
-    auto row_min = max_row;
-    IndexType num_occurences = 0;
-    for (auto row = row_start; row < row_end; row++) {
-        auto row_index = row_ptrs_cur[row];
-        auto col = col_idxs_mtx[row_index];
-        num_occurences =
-            ((col == col_min) && (row_index < row_ptrs_mtx[row + 1]))
-                ? (num_occurences + 1)
-                : num_occurences;
-        row_min = ((col < col_min) && (row_index < row_ptrs_mtx[row + 1]))
-                      ? row
-                      : row_min;
-        col_min = ((col < col_min) && (row_index < row_ptrs_mtx[row + 1]))
-                      ? col
-                      : col_min;
-    }
-    *col_min_out = col_min;
-    *row_min_out = row_min;
-    *num_occurences_out = num_occurences;
-}
-
-// GKO_INSTANTIATE_FOR_EACH_INDEX_TYPE(GKO_DECLARE_FIND_MIN_COL_KERNEL);
-
-
-// Checks if there is a nonzero entry in rows [row_start, ..., row_end] of input
-// matrix. Performs the checks by comparing row_ptrs[row] with row_ptrs_cur[row]
-// for row = row_start, ..., row_end. Returns the number of remaining nzs.
-template <typename IndexType>
-IndexType compute_remaining_nnz_row_check(const IndexType* row_ptrs_mtx,
-                                          IndexType* row_ptrs_cur,
-                                          IndexType row_start,
-                                          IndexType row_end)
-{
-    auto remaining_nnz = 0;
-    for (auto row = row_start; row < row_end; row++) {
-        remaining_nnz += ((row_ptrs_mtx[row + 1] > row_ptrs_cur[row])
-                              ? row_ptrs_mtx[row + 1] - row_ptrs_cur[row]
-                              : 0);
-    }
-    return remaining_nnz;
-}
-
-
-// Checks if there is a nonzero entry in rows row_start, ..., row_end of input
-// matrix. Performs the checks by comparing column indices. Returns the number
-// of remaining nzs.
-template <typename IndexType>
-IndexType compute_remaining_nnz_col_check(const IndexType* col_idxs_mtx,
-                                          IndexType* row_ptrs_cur,
-                                          IndexType row_start,
-                                          IndexType row_end, IndexType col_end)
-{
-    IndexType remaining_nnz = 0;
-    for (auto row = row_start; row < row_end; row++) {
-        auto row_index = row_ptrs_cur[row];
-        while ((col_idxs_mtx[row_index] < col_end) &&
-               (row_index < row_ptrs_cur[row + 1])) {
-            row_ptrs_cur[row] += 1;
-            row_index = row_ptrs_cur[row];
-            remaining_nnz += 1;
-        }
-    }
-    return remaining_nnz;
-}
-
-
-// Initializes the dense diagonal blocks of submatrix_11.
+// Computes the dense LU factors of the diagonal blocks of submatrix_11.
 template <typename ValueType, typename IndexType>
-void initialize_submatrix_11(
-    std::shared_ptr<const DefaultExecutor> exec,
-    const factorization::arrow_partitions<IndexType>* partitions,
-    const matrix::Csr<ValueType, IndexType>* mtx,
-    factorization::arrow_submatrix_11<ValueType, IndexType>* submtx_11)
+void factorize_diagonal_submatrix(
+    std::shared_ptr<const DefaultExecutor> exec, dim<2> size,
+    IndexType num_blocks, const IndexType* partitions,
+    IndexType* a_cur_row_ptrs,
+    const factorization::arrow_lu::collection_of_matrices<ValueType>* matrices,
+    factorization::arrow_lu::collection_of_matrices<ValueType>* l_factors,
+    factorization::arrow_lu::collection_of_matrices<ValueType>* u_factors)
+// const LinOp* a_linop,
+// LinOp* l_factors,
+// LinOp* u_factors)
 {
-    using dense = matrix::Dense<ValueType>;
-    const size_type stride = 1;
-    const auto partition_idxs = partitions->get_const_data();
-    const auto num_blocks = submtx_11->num_blocks;
-    auto l_factors = submtx_11->l_factors.begin();
+    // using dense = matrix::Dense<ValueType>;
+    // const auto stride = 1;
+    // for (auto block = 0; block < num_blocks; block++) {
+    //     const auto block_length
+    //         = static_cast<size_type>(partitions[block + 1] -
+    //                                  partitions[block]);
+    //     const dim<2> block_size = {block_length, block_length};
 
-    for (auto block = 0; block < num_blocks; block++) {
-        const dim<2> block_size = {
-            static_cast<size_type>(partition_idxs[block + 1] -
-                                   partition_idxs[block]),
-            static_cast<size_type>(partition_idxs[block + 1] -
-                                   partition_idxs[block])};
-        auto tmp_array = array<ValueType>(exec, block_size[0] * block_size[1]);
-        tmp_array.fill(0.0);
-        submtx_11->l_factors.push_back(std::move(
-            dense::create(exec, block_size, std::move(tmp_array), stride)));
-    }
+    //     auto a_submtx = share(dense::create(exec));
+    //     as<ConvertibleTo<dense>>(a_linop[block])
+    //         ->convert_to(a_submtx.get());
 
-    auto u_factors = submtx_11->l_factors.begin();
-    for (auto block = 0; block < num_blocks; block++) {
-        const dim<2> block_size = {
-            static_cast<size_type>(partition_idxs[block + 1] -
-                                   partition_idxs[block]),
-            static_cast<size_type>(partition_idxs[block + 1] -
-                                   partition_idxs[block])};
-        auto tmp_array = array<ValueType>(exec, block_size[0] * block_size[1]);
-        tmp_array.fill(0.0);
-        submtx_11->u_factors.push_back(std::move(
-            dense::create(exec, block_size, std::move(tmp_array), stride)));
-    }
-}
+    //     auto l_submtx = share(dense::create(exec));
+    //     as<ConvertibleTo<dense>>(l_factors[block])
+    //         ->convert_to(l_submtx.get());
 
+    //     auto u_submtx = share(dense::create(exec));
+    //     as<ConvertibleTo<dense>>(u_factors[block])
+    //         ->convert_to(u_submtx.get());
 
-// Step 2 for computing LU factors of submatrix_11. Computes the dense
-// LU factors of the diagonal blocks of submatrix_11.
-template <typename ValueType, typename IndexType>
-void factorize_submatrix_11(
-    std::shared_ptr<const DefaultExecutor> exec,
-    const factorization::arrow_partitions<IndexType>* partitions,
-    const matrix::Csr<ValueType, IndexType>* mtx,
-    factorization::arrow_submatrix_11<ValueType, IndexType>* submtx_11)
-{
-    using dense = matrix::Dense<ValueType>;
-    const auto num_blocks = submtx_11->num_blocks;
-    const auto split_index = submtx_11->split_index;
-    const auto stride = 1;
-    const auto partition_idxs = partitions->get_const_data();
-    const auto values_mtx = mtx->get_const_values();
-    const auto col_idxs_mtx = mtx->get_const_col_idxs();
-    const auto row_ptrs_mtx = mtx->get_const_row_ptrs();
-    auto row_ptrs = submtx_11->row_ptrs_cur.get_data();
-    size_type nnz_l_factor = 0;
-    size_type nnz_u_factor = 0;
-    exec->copy(split_index + 1, row_ptrs_mtx, row_ptrs);
-    IndexType nnz_l = 0;
-    IndexType nnz_u = 0;
-#pragma omp parallel for schedule(dynamic)
-    for (auto block = 0; block < num_blocks; block++) {
-        const auto len = static_cast<size_type>(partition_idxs[block + 1] -
-                                                partition_idxs[block]);
-        const dim<2> block_size = {len, len};
-        const auto num_elems_dense = static_cast<size_type>(len * len);
-        nnz_l += (len * len + len) / 2;
-        nnz_u += (len * len + len) / 2;
-
-        auto tmp_array = array<ValueType>(exec, block_size[0] * block_size[1]);
-        tmp_array.fill(0.0);
-        const auto row_start = partition_idxs[block];
-        const auto row_end = partition_idxs[block + 1];
-        auto system_mtx =
-            dense::create(exec, block_size, std::move(tmp_array), stride);
-        convert_csr_2_dense<ValueType, IndexType>(
-            block_size, row_ptrs, col_idxs_mtx, values_mtx, system_mtx.get(),
-            row_start, row_end);
-        submtx_11->diag_blocks.push_back(std::move(system_mtx));
-
-        // factorize_kernel(submtx_11->dense_diagonal_blocks[block].get(),
-        //                 submtx_11->dense_l_factors[block].get(),
-        //                 submtx_11->dense_u_factors[block].get());
-    }
-    submtx_11->nnz_l = nnz_l;
-    submtx_11->nnz_u = nnz_u;
-}
-
-
-/// Step 1 of computing LU factors of submatrix_12. Computes the number of
-// nonzero entries of submatrix_12.
-template <typename ValueType, typename IndexType>
-void preprocess_submatrix_12(
-    std::shared_ptr<const DefaultExecutor> exec,
-    const factorization::arrow_partitions<IndexType>* partitions,
-    const matrix::Csr<ValueType, IndexType>* mtx,
-    factorization::arrow_submatrix_12<ValueType, IndexType>* submtx_12,
-    array<IndexType>& row_ptrs_cur_src_array,
-    array<IndexType>& row_ptrs_cur_dst_array)
-{
-    const auto split_index = submtx_12->split_index;
-    const auto max_col = submtx_12->size[0] + submtx_12->size[1] + 1;
-    const auto num_blocks = submtx_12->num_blocks;
-    const auto partition_idxs = partitions->get_const_data();
-    const auto row_ptrs_mtx = mtx->get_const_row_ptrs();
-    const auto col_idxs_mtx = mtx->get_const_col_idxs();
-    auto row_ptrs_cur = submtx_12->row_ptrs_cur.get_data();
-    auto block_row_ptrs = submtx_12->block_ptrs.get_data();
-    auto nnz_per_block = submtx_12->nnz_per_block.get_data();
-    exec->copy(submtx_12->size[0], row_ptrs_mtx, row_ptrs_cur);
-#pragma omp parallel for schedule(dynamic)
-    for (auto block = 0; block < num_blocks; block++) {
-        const auto len = partition_idxs[block + 1] - partition_idxs[block];
-        const auto row_start = partition_idxs[block];
-        const auto row_end = partition_idxs[block + 1];
-        auto remaining_nnz = compute_remaining_nnz_row_check(
-            row_ptrs_mtx, row_ptrs_cur, row_start, row_end);
-        auto nnz_count = 0;
-        IndexType col_min = 0;
-        IndexType row_min = 0;
-        IndexType num_occurences = 0;
-        nnz_per_block[block] = remaining_nnz;
-        while (remaining_nnz > 0) {
-            find_min_col(row_ptrs_mtx, col_idxs_mtx, row_ptrs_cur,
-                         submtx_12->size, row_start, row_end, &col_min,
-                         &row_min, &num_occurences);
-            // Finds the rows with col = col_min and updates remaining_nnz.
-            bool found_nonzero_column = false;
-            for (auto row = row_start; row < row_end; row++) {
-                const auto row_index = row_ptrs_cur[row];
-                const auto col = col_idxs_mtx[row_index];
-                if ((col == col_min) &&
-                    (row_ptrs_cur[row] < row_ptrs_mtx[row + 1])) {
-                    row_ptrs_cur[row] += 1;
-                    remaining_nnz -= 1;
-                    found_nonzero_column = true;
-                }
-            }
-            // Updates nnz_count and sets new col_min to be equal to
-            // the previously maximum column.
-            nnz_count = (found_nonzero_column && (col_min >= split_index))
-                            ? nnz_count + len
-                            : nnz_count;
-            col_min = max_col;
-        }
-        block_row_ptrs[block + 1] = nnz_count;
-    }
-    components::prefix_sum(exec, block_row_ptrs, num_blocks + 1);
-    submtx_12->nnz = block_row_ptrs[num_blocks + 1];
-}
-
-
-// Step 2 of computing LU factors of submatrix_12. Initializes
-// the nonzero entries of submatrix_12.
-template <typename ValueType, typename IndexType>
-void initialize_submatrix_12(
-    std::shared_ptr<const DefaultExecutor> exec,
-    const factorization::arrow_partitions<IndexType>* partitions,
-    const matrix::Csr<ValueType, IndexType>* mtx,
-    factorization::arrow_submatrix_12<ValueType, IndexType>* submtx_12,
-    array<IndexType>& row_ptrs_cur_src_array)
-{
-    const auto num_blocks = submtx_12->num_blocks;
-    const auto split_index = submtx_12->split_index;
-    {
-        array<IndexType> row_ptrs_tmp = {exec, submtx_12->size[0] + 1};
-        array<IndexType> col_idxs_tmp = {
-            exec, static_cast<size_type>(submtx_12->nnz)};
-        array<ValueType> values_tmp = {exec,
-                                       static_cast<size_type>(submtx_12->nnz)};
-        submtx_12->mtx = share(matrix::Csr<ValueType, IndexType>::create(
-            exec, submtx_12->size, std::move(values_tmp),
-            std::move(col_idxs_tmp), std::move(row_ptrs_tmp)));
-    }
-    const auto partition_idxs = partitions->get_const_data();
-    const auto row_ptrs_mtx = mtx->get_const_row_ptrs();
-    const auto values_mtx = mtx->get_const_values();
-    const auto col_idxs_mtx = mtx->get_const_col_idxs();
-    auto row_ptrs_cur = submtx_12->row_ptrs_cur.get_data();
-    auto values = submtx_12->mtx->get_values();
-    auto col_idxs = submtx_12->mtx->get_col_idxs();
-    auto row_ptrs = submtx_12->mtx->get_row_ptrs();
-    exec->copy(submtx_12->size[0], row_ptrs_mtx, row_ptrs_cur);
-#pragma omp parallel for schedule(dynamic)
-    for (auto block = 0; block < num_blocks; block++) {
-        IndexType num_rhs = 0;
-        const auto block_size =
-            partition_idxs[block + 1] - partition_idxs[block];
-        const auto row_start = partition_idxs[block];
-        const auto row_end = partition_idxs[block + 1];
-        IndexType num_occurences = 0;
-        while (1) {
-            IndexType col_min = 0;
-            IndexType row_min = 0;
-            IndexType remaining_nnz = 0;
-            find_min_col(row_ptrs_mtx, col_idxs_mtx, row_ptrs_cur,
-                         submtx_12->size, row_start, row_end, &col_min,
-                         &row_min, &num_occurences);
-            remaining_nnz = compute_remaining_nnz_row_check(
-                row_ptrs_mtx, row_ptrs_cur, row_start, row_end);
-            if (remaining_nnz == 0) {
-                break;
-            }
-            auto row_index_submtx_12 = row_ptrs[row_min];
-            for (auto row = row_start; row < row_end; row++) {
-                const auto row_index_mtx = row_ptrs_cur[row];
-                const auto col = col_idxs_mtx[row_index_mtx];
-                const auto row_index_submtx_12 = row_ptrs[row];
-                values[row_index_submtx_12] =
-                    (col == col_min) ? values_mtx[row_index_mtx] : 0.0;
-                col_idxs[row_index_submtx_12] = col_min - split_index;
-                row_ptrs[row] += 1;
-                if (col == col_min) {
-                    row_ptrs_cur[row] += 1;
-                }
-            }
-            num_rhs += 1;
-        }
-    }
-
-    // Resets row_ptrs to original position.
-#pragma omp parallel for schedule(dynamic)
-    for (auto block = num_blocks - 1; block >= 0; block--) {
-        const auto row_end = partition_idxs[block + 1];
-        const auto row_start = partition_idxs[block];
-        for (auto row = row_end; row >= row_start; row--) {
-            row_ptrs[row] = (row > 0) ? row_ptrs[row - 1] : 0;
-        }
-    }
+    //     factorize_kernel(a_submtx.get(), l_submtx.get(), u_submtx.get());
+    // }
 }
 
 
 // Step 3 of computing LU factors of submatrix_12. Sets up the
 // nonzero entries of submatrix_12 of U factor.
 template <typename ValueType, typename IndexType>
-void factorize_submatrix_12(
-    std::shared_ptr<const DefaultExecutor> exec,
-    const factorization::arrow_partitions<IndexType>* partitions,
-    const factorization::arrow_submatrix_11<ValueType, IndexType>* submtx_11,
-    factorization::arrow_submatrix_12<ValueType, IndexType>* submtx_12)
+void factorize_off_diagonal_submatrix(
+    std::shared_ptr<const DefaultExecutor> exec, IndexType split_index,
+    IndexType num_blocks, const IndexType* partitions, const LinOp* factor_00,
+    matrix::Csr<ValueType, IndexType>* factor_01)
 {
     using dense = matrix::Dense<ValueType>;
-    const auto stride = 1;
-    const auto num_blocks = submtx_12->num_blocks;
-    const auto partition_idxs = partitions->get_const_data();
-    const auto block_row_ptrs = submtx_12->block_ptrs.get_const_data();
-    array<ValueType> residuals = array<ValueType>(exec, submtx_12->nnz);
-    exec->copy(submtx_12->nnz, submtx_12->mtx->get_values(),
-               residuals.get_data());
-    //#pragma omp parallel for schedule(dynamic)
-    //    for (auto block = 0; block < num_blocks; block++) {
-    //        if (submtx_12->nz_per_block.get_data()[block] > 0) {
-    //            const auto block_size =
-    //                static_cast<size_type>(partition_idxs[block + 1] -
-    //                partition_idxs[block]);
-    //            const dim<2> dim_tmp = {static_cast<size_type>(block_size),
-    //                                    static_cast<size_type>(block_size)};
-    //            const dim<2> dim_rhs = {block_size,
-    //                                    static_cast<size_type>(block_row_ptrs[block
-    //                                    + 1] - block_row_ptrs[block]) /
-    //                                    block_size}
-    //
-    //            auto l_factor_tmp = submtx_11->dense_l_factors[block].get();
-    //            auto values_l_factor = l_factor_tmp->get_values();
-    //            auto values_12 =
-    //                &submtx_12->mtx->get_values()[block_row_ptrs[block]];
-    //
-    //            lower_triangular_solve_kernel(dim_tmp, values_l_factor,
-    //            dim_rhs,
-    //                                          values_12);
-    //
-    //            auto num_elems = dim_rhs[0] * dim_rhs[1];
-    //            auto values_residual =
-    //                &residuals.get_data()[block_row_ptrs[block]];
-    //            auto residual_vectors = dense::create(
-    //                exec, dim_rhs,
-    //                array<ValueType>::view(exec, num_elems, values_residual),
-    //                stride);
-    //
-    //            dim<2> dim_rnorm = {1, dim_rhs[1]};
-    //            array<ValueType> values_rnorm = {exec, dim_rnorm[1]};
-    //            values_rnorm.fill(0.0);
-    //            auto residual_norm =
-    //                dense::create(exec, dim_rnorm, values_rnorm, stride);
-    //
-    //            auto l_factor = share(dense::create(
-    //                exec, dim_tmp,
-    //                array<ValueType>::view(exec, dim_tmp[0] * dim_tmp[1],
-    //                                       values_l_factor),
-    //                stride));
-    //
-    //            auto solution =
-    //                dense::create(exec, dim_rhs,
-    //                              array<ValueType>::view(
-    //                                  exec, dim_rhs[0] * dim_rhs[1],
-    //                                  values_12),
-    //                              stride);
-    //
-    //            // Performs MM multiplication.
-    //            auto x = solution->get_values();
-    //            auto b = residual_vectors->get_values();
-    //            auto l_vals = l_factor->get_values();
-    //            for (auto row_l = 0; row_l < dim_tmp[0]; row_l++) {
-    //                for (auto col_b = 0; col_b < dim_rhs[1]; col_b++) {
-    //                    for (auto row_b = 0; row_b < dim_rhs[0]; row_b++) {
-    //                        b[dim_rhs[1] * row_l + col_b] -=
-    //                            l_vals[dim_tmp[1] * row_l + row_b] *
-    //                            x[dim_rhs[1] * row_b + col_b];
-    //                    }
-    //                }
-    //            }
-    //
-    //            // Computes residual norms.
-    //            auto r = residual_vectors.get();
-    //            r->compute_norm2(residual_norm.get());
-    //            for (auto i = 0; i < residual_norm->get_size()[1]; ++i) {
-    //                if (std::abs(residual_norm->get_values()[i]) > 1e-8) {
-    //                    std::cout << "i: " << i << "abs values: "
-    //                              << std::abs(residual_norm->get_values()[i])
-    //                              << ", block_index: " << block << '\n';
-    //                    break;
-    //                }
-    //            }
-    //        }
-    //    }
-}
-
-
-// Step 1 of computing LU factors of submatrix_21. Computes the number of
-// nonzeros of submatrix_21 of L factor.
-template <typename ValueType, typename IndexType>
-void preprocess_submatrix_21(
-    std::shared_ptr<const DefaultExecutor> exec,
-    const factorization::arrow_partitions<IndexType>* partitions,
-    const matrix::Csr<ValueType, IndexType>* mtx,
-    factorization::arrow_submatrix_21<ValueType, IndexType>* submtx_21,
-    array<IndexType>& col_ptrs_dst_array, array<IndexType>& row_ptrs_dst_array)
-{
-    const auto split_index = submtx_21->split_index;
-    const auto num_blocks = submtx_21->num_blocks;
-    const auto size = submtx_21->size;
-    const auto col_idxs_mtx = mtx->get_const_col_idxs();
-    const auto row_ptrs_mtx = mtx->get_const_row_ptrs();
-    const auto values_mtx = mtx->get_const_values();
-    const auto partition_idxs = partitions->get_const_data();
-    auto row_ptrs_cur_mtx = submtx_21->row_ptrs_cur.get_data();
-    auto block_col_ptrs_submtx_21 = submtx_21->block_ptrs.get_data();
-    auto nnz_per_block_submtx_21 = submtx_21->nnz_per_block.get_data();
-    auto col_ptrs_submtx_21 = submtx_21->col_ptrs_cur.get_data();
-    // Compressed representation storage.
-    std::vector<IndexType> storage_rows;
-    std::vector<IndexType> storage_row_ptrs;
-    //    array<IndexType> storage_block_row_ptrs_array = {exec,
-    //    static_cast<IndexType>(num_blocks) + 1}; auto storage_block_row_ptrs =
-    //    storage_block_row_ptrs_array.get_data();
-    //    // For handling compressed representation storage.
-    //    IndexType num_elems_mtx = 0;
-    //    IndexType max_num_elems_mtx = size[0] + size[1];
-    //    // Initialize storage and submtx_21, arrays that are required.
-    //    storage_rows.resize(size[0] + size[1]);
-    //    storage_row_ptrs.resize(size[0] + size[1]);
-    //    storage_block_row_ptrs_array.fill(0);
-    //    submtx_21->block_ptrs.fill(0);
-    //    submtx_21->col_ptrs_cur.fill(0);
-    //    exec->copy(size[0], &row_ptrs_mtx[split_index], row_ptrs_cur_mtx);
-    //    // Main loop.
-    //    auto nz_count_total_submtx_21 = 0;
-    //    for (auto block = 0; block < num_blocks; block++) {
-    //        IndexType nz_count_submtx_21 = 0;
-    //        const auto col_start = partition_idxs[block];
-    //        const auto col_end = partition_idxs[block + 1];
-    //        const auto block_size =
-    //            partition_idxs[block + 1] - partition_idxs[block];
-    //#pragma omp parallel for schedule(dynamic) shared(col_start, col_end,
-    // block_size) reduction(+:nz_count_submtx_21)
-    //        for (auto row = 0; row < size[0]; row++) {
-    //            auto row_index_mtx = row_ptrs_cur_mtx[row];
-    //            auto col_mtx = col_idxs_mtx[row_index_mtx];
-    //            // If current (row, col_mtx) entry remains in the current
-    //            // partition, increment nz_count_submtx_21 and update
-    //            // col_ptrs_submtx_21.
-    //            if ((col_mtx >= col_start) && (col_mtx < col_end)) {
-    //                nz_count_submtx_21 += block_size;
-    //#pragma omp critical
-    //                {
-    //                    storage_block_row_ptrs[block + 1] += 1;
-    //                }
-    //
-    //                // If stored entries exceed size.
-    //                if (num_elems_mtx + 1 >= max_num_elems_mtx) {
-    //                    max_num_elems_mtx += (size[0] + size[1]);
-    //                    storage_rows.resize(max_num_elems_mtx);
-    //                    storage_row_ptrs.resize(max_num_elems_mtx);
-    //                }
-    //
-    //                // Inserts entry.
-    //                storage_rows[num_elems_mtx] = row + split_index;
-    //                storage_row_ptrs[num_elems_mtx] = row_ptrs_cur_mtx[row];
-    //                num_elems_mtx += 1;
-    //                row_ptrs_cur_mtx[row] += 1;
-    //                row_index_mtx = row_ptrs_cur_mtx[row];
-    //                col_mtx = col_idxs_mtx[row_index_mtx];
-    //
-    //                // Increment col_ptrs_submtx_21.
-    //                for (auto col_submtx_21 = col_start; col_submtx_21 <
-    //                col_end;
-    //                     col_submtx_21++) {
-    //                    col_ptrs_submtx_21[col_submtx_21 + 1] += 1;
-    //                }
-    //
-    //                // Increments row_ptrs_cur_mtx[row] until it reaches the
-    //                // beginning of the next block.
-    //                while ((col_mtx >= col_start) && (col_mtx < col_end)) {
-    //                    row_ptrs_cur_mtx[row] += 1;
-    //                    row_index_mtx = row_ptrs_cur_mtx[row];
-    //                    col_mtx = col_idxs_mtx[row_index_mtx];
-    //
-    //                    if (num_elems_mtx + 1 >= max_num_elems_mtx) {
-    //                        max_num_elems_mtx += (size[0] + size[1]);
-    //                        storage_rows.resize(max_num_elems_mtx);
-    //                        storage_row_ptrs.resize(max_num_elems_mtx);
-    //                    }
-    //
-    //                    // Stores (row, row_ptr).
-    //                    storage_rows[num_elems_mtx] = row + split_index;
-    //                    storage_row_ptrs[num_elems_mtx] =
-    //                    row_ptrs_cur_mtx[row]; num_elems_mtx += 1;
-    //                }
-    //            }
-    //        }
-    //        // Updates nonzero information for submtx_21->
-    //        nz_count_total_submtx_21 += nz_count_submtx_21;
-    //        nz_per_block_submtx_21[block] = nz_count_submtx_21;
-    //        block_col_ptrs_submtx_21[block + 1] = nz_count_total_submtx_21;
-    //    }
-    //    submtx_21->nnz = nz_count_total_submtx_21;
-    //
-    //    components::prefix_sum(exec, block_row_ptrs, num_blocks + 1);
-    //
-    //    //{
-    //    //    array<IndexType> rows_in = {
-    //    //        exec, static_cast<size_type>(num_elems_mtx)};
-    //    //    array<IndexType> row_ptrs_in = {
-    //    //        exec, static_cast<size_type>(num_elems_mtx)};
-    //    //    array<IndexType> block_ptrs_in = {
-    //    //        exec, static_cast<size_type>(num_blocks) + 1};
-    //    //    for (auto i = 0; i < num_elems_mtx; i++) {
-    //    //        rows_in.get_data()[i] = compressed_rows_mtx[i];
-    //    //    }
-    //    //    for (auto i = 0; i < num_elems_mtx; i++) {
-    //    //        row_ptrs_in.get_data()[i] = compressed_row_ptrs_mtx[i];
-    //    //    }
-    //    //    for (auto i = 0; i < num_blocks + 1; i++) {
-    //    //        block_ptrs_in.get_data()[i] =
-    //    //            compressed_block_row_ptrs_mtx.get_data()[i];
-    //    //    }
-    //
-    //    //    submtx_21->block_storage =
-    //    // std::make_shared<gko::factorization::block_csr_storage<IndexType>>(
-    //    //            rows_in, row_ptrs_in, block_ptrs_in);
-    //    //}
-}
-
-
-// Step 2 of computing LU factors of submatrix_21. Sets up the
-// nonzeros of submatrix_21 of U factor.
-template <typename ValueType, typename IndexType>
-void initialize_submatrix_21(
-    std::shared_ptr<const DefaultExecutor> exec,
-    const factorization::arrow_partitions<IndexType>* partitions,
-    const matrix::Csr<ValueType, IndexType>* mtx,
-    factorization::arrow_submatrix_21<ValueType, IndexType>* submtx_21)
-{
-    const auto size = submtx_21->size;
-    const auto split_index = submtx_21->split_index;
-    const auto num_blocks = submtx_21->num_blocks;
-    const auto partition_idxs = partitions->get_const_data();
-    const auto values_mtx = mtx->get_const_values();
-    const auto row_ptrs_mtx = mtx->get_const_row_ptrs();
-    const auto col_idxs_mtx = mtx->get_const_col_idxs();
-    auto row_ptrs_cur_mtx = submtx_21->row_ptrs_cur.get_data();
-    auto values_submtx_21 = submtx_21->mtx->get_values();
-    auto col_ptrs_submtx_21 = submtx_21->mtx->get_row_ptrs();
-    auto row_idxs_submtx_21 = submtx_21->mtx->get_col_idxs();
-    auto col_ptrs_cur_submtx_21 = submtx_21->col_ptrs_cur.get_data();
-    auto block_col_ptrs_submtx_21 = submtx_21->block_ptrs.get_data();
-    auto storage = submtx_21->block_storage;
-    auto block_row_ptrs = storage->block_ptrs.get_data();
-    auto rows = storage->rows.get_data();
-    auto row_ptrs_local = storage->row_ptrs.get_data();
-
-    // Initializes row_ptrs_cur_mtx to (2, 1)-submatrix of
-    // mtx row_ptrs.
-    exec->copy(size[0] + 1, &row_ptrs_mtx[split_index], row_ptrs_cur_mtx);
-
-// Updates col_ptrs[partition_idxs[block]] += block_col_ptrs[block] for each
-// 0 <= block < num_blocks.
-#pragma omp parallel for schedule(dynamic)
+    size_type stride = 1;
+    array<ValueType> res_values =
+        array<ValueType>(exec, factor_01.get_num_elems());
+    exec->copy(factor_01.get_num_elems(), factor_01->get_values(),
+               res_values.get_data());
     for (auto block = 0; block < num_blocks; block++) {
-        auto col_idx = partition_idxs[block];
-        col_ptrs_submtx_21[col_idx] = block_col_ptrs_submtx_21[block];
-    }
-    // Performs a reduction on col_ptrs of partition. @Replace with ginkgo
-    // partial sum function.
-#pragma omp parallel for schedule(dynamic)
-    for (auto block = 0; block < num_blocks; block++) {
-        const auto row_start = block_row_ptrs[block];
-        const auto row_end = block_row_ptrs[block + 1];
-        const auto block_size =
-            partition_idxs[block + 1] - partition_idxs[block];
-        const auto num_cols = (submtx_21->block_ptrs.get_data()[block + 1] -
-                               submtx_21->block_ptrs.get_data()[block]) /
-                              block_size;
-        for (auto col = partition_idxs[block] + 1;
-             col < partition_idxs[block + 1]; col++) {
-            col_ptrs_submtx_21[col] = col_ptrs_submtx_21[col - 1] + num_cols;
-        }
-    }
-
-// Main loop.
-#pragma omp parallel for schedule(dynamic)
-    for (auto block = 0; block < num_blocks; block++) {
-        const auto col_start = partition_idxs[block];
-        const auto col_end = partition_idxs[block + 1];
-        IndexType block_size = 0;
-        IndexType num_cols = 0;
-
-        IndexType row_start = 0;
-        IndexType row_end = 0;
-
-#pragma omp critical
-        {
-            block_size = partition_idxs[block + 1] - partition_idxs[block];
-            row_start = block_row_ptrs[block];
-            row_end = block_row_ptrs[block + 1];
-            num_cols = (row_end - row_start) / block_size;
-        }
-        IndexType col_min = partition_idxs[block];
-        IndexType row_min = split_index;
-
-        // Sets row_idxs_submtx_21 for entries in submatrix block.
-        exec->copy(block_size, &col_ptrs_submtx_21[col_start],
-                   &col_ptrs_cur_submtx_21[col_start]);
-        for (auto row_index = row_start; row_index < row_end; row_index++) {
-            auto row_mtx = rows[row_index];
-            for (auto col_submtx_21 = col_start; col_submtx_21 < col_end;
-                 col_submtx_21++) {
-                auto col_index = col_ptrs_cur_submtx_21[col_submtx_21];
-                row_idxs_submtx_21[col_index] = row_mtx;
-                col_ptrs_cur_submtx_21[col_submtx_21] += 1;
-            }
-        }
-
-        // Copies numerical values from mtx to arrow_submatrix_21.mtx.
-        // Modifies row_ptrs (of arrow_submatrix_21) while copying.
-        exec->copy(block_size, &col_ptrs_submtx_21[col_start],
-                   &col_ptrs_cur_submtx_21[col_start]);
-        for (auto row_index = row_start; row_index < row_end; row_index++) {
-            auto row_index_mtx = row_ptrs_local[row_index];
-            for (auto col_submtx_21 = col_start; col_submtx_21 < col_end;
-                 col_submtx_21++) {
-                const auto col_index = col_ptrs_cur_submtx_21[col_submtx_21];
-                const auto col_mtx = col_idxs_mtx[row_index_mtx];
-                values_submtx_21[col_index] =
-                    ((col_submtx_21 == col_mtx) && (col_mtx < col_end))
-                        ? values_mtx[row_index_mtx]
-                        : 0.0;
-                row_ptrs_local[row_index] += 1;
-                row_index_mtx = row_ptrs_local[row_index];
-            }
-        }
-    }
-}
-
-
-// Step 3 of computing submatrix_21 of L factor. Sets up the
-// nonzeros of submatrix_21 of L factor.
-template <typename ValueType, typename IndexType>
-void factorize_submatrix_21(
-    std::shared_ptr<const DefaultExecutor> exec,
-    const factorization::arrow_partitions<IndexType>* partitions,
-    const factorization::arrow_submatrix_11<ValueType, IndexType>* submtx_11,
-    factorization::arrow_submatrix_21<ValueType, IndexType>* submtx_21)
-{
-    using dense = matrix::Dense<ValueType>;
-    const auto num_blocks = submtx_21->num_blocks;
-    const auto block_col_ptrs = submtx_21->block_ptrs.get_const_data();
-    const auto partition_idxs = partitions->get_const_data();
-
-    auto nnz_per_block = submtx_21->nnz_per_block.get_data();
-    auto residuals = array<ValueType>(exec, submtx_21->nnz);
-    exec->copy(submtx_21->nnz, submtx_21->mtx->get_values(),
-               residuals.get_data());
-#pragma omp parallel for schedule(dynamic)
-    for (auto block = 0; block < num_blocks; block++) {
-        if (nnz_per_block[block] > 0) {
-            // Sets up dimensions of local data.
-            const auto stride = 1;
-            const IndexType row_idx = partition_idxs[block];
-            const IndexType block_size = static_cast<size_type>(
-                partition_idxs[block + 1] - partition_idxs[block]);
-            const dim<2> dim_tmp = {static_cast<size_type>(block_size),
-                                    static_cast<size_type>(block_size)};
-
-            // Computes the left solution to a local linear system.
-            const dim<2> dim_rhs = {
-                static_cast<size_type>(block_col_ptrs[block + 1] -
-                                       block_col_ptrs[block]) /
-                    block_size,
-                block_size};
-            auto system_mtx = share(dense::create(exec));
-            as<ConvertibleTo<dense>>(submtx_11->u_factors[block].get())
-                ->convert_to(system_mtx.get());
-            const auto values_u_factor = system_mtx.get()->get_values();
-            auto values_21 =
-                &submtx_21->mtx->get_values()[block_col_ptrs[block]];
-            upper_triangular_left_solve_kernel(dim_tmp, values_u_factor,
-                                               dim_rhs, values_21);
-
-            // Computes residual vectors.
-            size_type one = 1;
-            const dim<2> dim_rnorm = {one, dim_rhs[1]};
-            const auto num_elems = dim_rhs[0] * dim_rhs[1];
-            auto values_residual = &residuals.get_data()[block_col_ptrs[block]];
-            auto residual_vectors = dense::create(
-                exec, dim_rhs,
-                array<ValueType>::view(exec, num_elems, values_residual),
-                stride);
-            array<ValueType> values_rnorm = {exec, dim_rnorm[1]};
-            values_rnorm.fill(0.0);
-            auto residual_norm =
-                dense::create(exec, dim_rnorm, values_rnorm, stride);
-
-            // Matrix is stored in CSC format here so either transpose it or use
-            // it as row vector x matrix operations
-            auto u_factor = share(dense::create(
-                exec, dim_tmp,
-                array<ValueType>::view(exec, dim_tmp[0] * dim_tmp[1],
-                                       values_u_factor),
-                stride));
-            auto solution =
-                dense::create(exec, dim_rhs,
+        auto nnz_in_block =
+            factor_01->row_ptrs[block + 1] - factor_01->row_ptrs[block];
+        if (nnz_in_block > 0) {
+            const auto num_rows = partitions[block + 1] - partitions[block];
+            const auto num_cols = factor_01.get_num_elems() / num_rows;
+            dim<2> dim_u = {num_rows, num_cols};
+            auto residuals =
+                dense::create(exec, dim_u,
                               array<ValueType>::view(
-                                  exec, dim_rhs[0] * dim_rhs[1], values_21),
+                                  exec, factor_01.get_num_elems(), res_values),
                               stride);
 
-            // MM multiplication (check if format is ok)
-            auto x = solution->get_values();
-            auto b = residual_vectors->get_values();
-            auto u_vals = u_factor->get_values();
-            for (auto row_b = 0; row_b < dim_rhs[0]; row_b++) {
-                for (auto col_l = 0; col_l < dim_tmp[1]; col_l++) {
-                    for (auto intern_index = 0; intern_index < dim_rhs[1];
-                         intern_index++) {
-                        b[row_b + dim_rhs[0] * col_l] -=
-                            u_vals[intern_index + dim_tmp[0] * col_l] *
-                            x[row_b + dim_rhs[0] * intern_index];
-                    }
-                }
-            }
+            // Solves l_factor_00 * X = u_factor_01
+            const auto row_index_begin = partitions[block];
+            const auto row_index_end = partitions[block + 1];
+            const auto block_length = static_cast<size_type>(
+                partitions[block + 1] - partitions[block]);
+            const dim<2> dim_l = {block_length, block_length};
+            auto factor_00_submtx = share(dense::create(exec));
+            as<ConvertibleTo<dense>>(factor_00[block])
+                ->convert_to(factor_00_submtx.get());
+            auto l_values = factor_00_submtx->get_values();
+            auto u_values = &factor_01->get_values()[row_index_begin];
+            auto rhs =
+                dense::create(exec, dim_u,
+                              array<ValueType>::view(
+                                  exec, factor_01.get_num_elems(), u_values),
+                              stride);
+            lower_triangular_solve_kernel(dim_l, l_values, dim_u, u_values);
 
-            // Compute residual norms.
-            auto r = residual_vectors.get();
-            r->compute_norm2(residual_norm.get());
-            for (auto i = 0; i < residual_norm->get_size()[1]; ++i) {
-                if (std::abs(residual_norm->get_values()[i]) > 1e-8) {
+            // Computes residual vectors.
+            dim<2> dim_rnorm = {1, dim_u[1]};
+            array<ValueType> rnorms_values = {exec, dim_rnorm[1]};
+            auto rnorms = dense::create(exec, dim_rnorm, rnorms_values, stride);
+            rnorms.fill(0.0);
+            auto solution = dense::create(
+                exec, dim_u,
+                array<ValueType>::view(exec, dim_u[0] * dim_u[1], u_values),
+                stride);
+            exec->copy(factor_01.get_num_elems(), rhs, residuals);
+            auto one =
+                gko::initialize<gko::matrix::Dense<ValueType>>({1.0}, exec);
+            auto minus_one =
+                gko::initialize<gko::matrix::Dense<ValueType>>({-1.0}, exec);
+            factor_00_submtx->apply(solution, minus_one, residuals, one);
+
+            // Computes residual norms.
+            residuals.get()->compute_norm2(rnorms.get());
+            for (auto i = 0; i < rnorms->get_size()[1]; ++i) {
+                if (std::abs(rnorms->get_values()[i]) > 1e-8) {
                     break;
+                } else {
+                    // Refine if required.
                 }
             }
         }
     }
 }
 
+
 template <typename ValueType, typename IndexType>
-void spdgemm_blocks(
-    std::shared_ptr<const DefaultExecutor> exec, dim<2> size,
-    IndexType block_size,
-    const factorization::arrow_submatrix_11<ValueType, IndexType>* submtx_11,
-    const factorization::arrow_submatrix_12<ValueType, IndexType>* submtx_12,
-    const factorization::arrow_submatrix_21<ValueType, IndexType>* submtx_21,
-    matrix::Dense<ValueType>* schur_complement, IndexType block_index,
-    ValueType alpha)
+void spdgemm_in(std::shared_ptr<const DefaultExecutor> exec, dim<2> size,
+                IndexType split_index, IndexType block_size,
+                IndexType block_index, ValueType alpha,
+                const IndexType* partition_idxs, const LinOp* linop_left,
+                const LinOp* linop_right, LinOp* linop_result)
 {
     using dense = matrix::Dense<ValueType>;
-    const auto split_index = submtx_12->split_index;
-    const auto block_col_ptrs = submtx_21->block_ptrs.get_const_data();
-    const auto block_row_ptrs = submtx_12->block_ptrs.get_const_data();
-    const auto num_rows_21 =
-        (block_col_ptrs[block_index + 1] - block_col_ptrs[block_index]) /
-        block_size;
-    const auto num_cols_12 =
-        (block_row_ptrs[block_index + 1] - block_row_ptrs[block_index]) /
-        block_size;
-    const auto values_21 = submtx_21->mtx->get_values();
-    const auto row_idxs_21 = submtx_21->mtx->get_col_idxs();
-    const auto values_12 = submtx_12->mtx->get_values();
-    const auto col_idxs_12 = submtx_21->mtx->get_col_idxs();
+    using csr = matrix::Csr<ValueType, IndexType>;
+    auto left_mtx = share(csr::create(exec));
+    as<ConvertibleTo<csr>>(linop_left[block_index])->convert_to(left_mtx.get());
+    auto right_mtx = share(csr::create(exec));
+    as<ConvertibleTo<csr>>(linop_right[block_index])
+        ->convert_to(right_mtx.get());
+    const auto values_l = left_mtx->get_values();
+    const auto row_idxs_l = left_mtx->get_col_idxs();
+    const auto col_ptrs_l = left_mtx->get_row_ptrs();
+    const auto values_r = right_mtx->get_values();
+    const auto col_idxs_r = right_mtx->get_col_idxs();
+    const auto row_ptrs_r = right_mtx->get_row_ptrs();
+    const auto ptr_span_r = {row_ptrs_r[partition_idxs[block_index]],
+                             row_ptrs_r[partition_idxs[block_index + 1]]};
+    const auto ptr_span_l = {col_ptrs_l[partition_idxs[block_index]],
+                             col_ptrs_l[partition_idxs[block_index + 1]]};
+    const auto num_cols_r = (ptr_span_r.end - ptr_span_r.begin) /
+                            static_cast<IndexType>(block_size);
+    const auto num_rows_l = (ptr_span_l.end - ptr_span_l.begin) /
+                            static_cast<IndexType>(block_size);
+    auto schur_complement = share(dense::create(exec));
+    as<ConvertibleTo<csr>>(linop_result[0])->convert_to(schur_complement.get());
     auto schur_complement_values = schur_complement->get_values();
     for (auto i = 0; i < block_size; i++) {
-        for (auto j = 0; j < num_rows_21; j++) {
-            for (auto k = 0; k < num_cols_12; k++) {
-                auto col_index_21 =
-                    block_col_ptrs[block_index] + num_rows_21 * i + j;
-                auto value_21 = values_21[col_index_21];
-                auto row = row_idxs_21[col_index_21] - split_index;
+        for (auto j = 0; j < num_rows_l; j++) {
+            for (auto k = 0; k < num_cols_r; k++) {
+                auto col_index_l = ptr_span_l + num_rows_l * i + j;
+                auto value_l = values_l[col_index_l];
+                auto row = row_idxs_l[col_index_l];
 
-                auto row_index_12 =
-                    block_row_ptrs[block_index] + num_cols_12 * i + k;
-                auto value_12 = values_12[row_index_12];
-                auto col = col_idxs_12[row_index_12];
+                auto row_index_r = ptr_span_r + num_cols_r * i + k;
+                auto value_r = values_r[row_index_r];
+                auto col = col_idxs_r[row_index_r];
 
-#pragma omp critical
-                {
-                    schur_complement_values[size[1] * row + col] +=
-                        (alpha * value_21 * value_12);
-                }
+                schur_complement_values[size[1] * row + col] +=
+                    (alpha * value_l * value_r);
             }
         }
     }
 }
 
-
-// Computes the schur complement of submatrix_22.
 template <typename ValueType, typename IndexType>
-void initialize_submatrix_22(
-    std::shared_ptr<const DefaultExecutor> exec,
-    const factorization::arrow_partitions<IndexType>* partitions,
-    const factorization::arrow_submatrix_11<ValueType, IndexType>* submtx_11,
-    const factorization::arrow_submatrix_12<ValueType, IndexType>* submtx_12,
-    const factorization::arrow_submatrix_21<ValueType, IndexType>* submtx_21,
-    factorization::arrow_submatrix_22<ValueType, IndexType>* submtx_22)
+void spdgemm(std::shared_ptr<const DefaultExecutor> exec, IndexType num_blocks,
+             const IndexType* partition_idxs, const LinOp* linop_left,
+             const LinOp* linop_right, LinOp* schur_complement)
 {
-    using dense = matrix::Dense<ValueType>;
-    auto schur_complement = share(dense::create(exec));
-    as<ConvertibleTo<dense>>(submtx_22->mtx.get())
-        ->convert_to(schur_complement.get());
-    const dim<2> size = {submtx_21->size[0], submtx_12->size[1]};
-    const auto num_blocks = submtx_11->num_blocks;
-    const auto partition_idxs = partitions->get_const_data();
-#pragma omp parallel for schedule(dynamic)
     for (IndexType block = 0; block < num_blocks; block++) {
         const auto block_size =
             partition_idxs[block + 1] - partition_idxs[block];
-        // Synchronization here is required for writting (updating the entries).
         ValueType coeff = -1.0;
-        // spdgemm_blocks(exec, size, block_size, submtx_11, submtx_12,
-        //               submtx_21, submtx_22, block, coeff);
+        spdgemm_in(exec, block_size, block, coeff, partition_idxs, linop_left,
+                   linop_right, schur_complement);
     }
 }
 
-
-// Computes L and U factors of submatrix_22.
+// Computes the schur complement of submatrix_22.
 template <typename ValueType, typename IndexType>
-void factorize_submatrix_22(
-    std::shared_ptr<const DefaultExecutor> exec,
-    factorization::arrow_submatrix_22<ValueType, IndexType>* submtx_22)
+void compute_schur_complement(
+    std::shared_ptr<const DefaultExecutor> exec, IndexType num_blocks,
+    const IndexType* partitions,
+    const factorization::arrow_lu::collection_of_matrices<ValueType>*
+        l_factors_10,
+    const factorization::arrow_lu::collection_of_matrices<ValueType>*
+        u_factors_01,
+    factorization::arrow_lu::collection_of_matrices<ValueType>*
+        schur_complement_in)
 {
-    using dense = matrix::Dense<ValueType>;
-    const auto system_mtx = share(dense::create(exec));
-    as<ConvertibleTo<dense>>(submtx_22->mtx.get())
-        ->convert_to(system_mtx.get());
-
-    auto l_factor = share(dense::create(exec));
-    as<ConvertibleTo<dense>>(submtx_22->l_factor.get())
-        ->convert_to(l_factor.get());
-
-    auto u_factor = share(dense::create(exec));
-    as<ConvertibleTo<dense>>(submtx_22->u_factor.get())
-        ->convert_to(u_factor.get());
-
-    factorize_kernel(system_mtx.get(), l_factor.get(), u_factor.get());
+    using csr = matrix::Csr<ValueType, IndexType>;
+    const auto l_factor = as<csr>(l_factors_10);
+    const auto u_factor = as<csr>(u_factors_01);
+    const auto schur_complement = as<csr>(schur_complement_in);
+    spdgemm(exec, num_blocks, partitions, l_factor, u_factor, schur_complement);
 }
 
-
 template <typename ValueType, typename IndexType>
-void compute_factors(
+std::unique_ptr<matrix::Arrow<ValueType, IndexType>> create_factor(
     std::shared_ptr<const DefaultExecutor> exec,
-    factorization::ArrowLuState<ValueType, IndexType>* workspace,
-    const gko::matrix::Csr<ValueType, IndexType>* mtx)
+    const matrix::Arrow<ValueType, IndexType>* a_)
 {
-    auto submtx_11 = workspace->get_submatrix_11();
-    auto submtx_12 = workspace->get_submatrix_12();
-    auto submtx_21 = workspace->get_submatrix_21();
-    auto submtx_22 = workspace->get_submatrix_22();
-    auto partitions = workspace->get_partitions();
+    // using dense = matrix::Dense<ValueType>;
+    // using csr = matrix::Csr<ValueType, IndexType>;
+    std::unique_ptr<matrix::Arrow<ValueType, IndexType>> l_factor = {exec};
+    // size_type stride = 1;
+    // const auto partitions = a_matrix->get_partition_idxs();
+    // const auto num_blocks = a_matrix->get_num_elems() - 1;
+    // const auto size = a_matrix->get_submatrix_00()->get_size();
+    // const auto max_col = size[0] + size[1] + 1;
+    // const auto split_index = partitions[num_blocks];
+    // const auto a_row_ptrs = a_matrix->get_const_row_ptrs();
+    // const auto a_col_idxs = a_matrix->get_const_col_idxs();
+    // const auto a_values = a_matrix->get_const_values();
+    // array<IndexType> tmp1_array = {exec, size[0] + 1};
+    // array<IndexType> tmp2_array = {exec, size[0] + 1};
+    // array<IndexType> tmp3_array = {exec, size[0] + 1};
+    // tmp1_array.fill(0);
+    // tmp2_array.fill(0);
+    // tmp3_array.fill(0);
+    // auto a_cur_row_ptrs = tmp1_array.get_data();
+    // auto l_cur_row_ptrs = tmp2_array.get_data();
+    // auto u_cur_row_ptrs = tmp3_array.get_data();
 
-    array<IndexType> row_ptrs_src_cur_array = {exec, submtx_12->size[0] + 1};
-    array<IndexType> row_ptrs_dst_cur_array = {exec, submtx_12->size[0] + 1};
-    array<IndexType> col_ptrs_dst_cur_array = {exec, submtx_12->size[0] + 1};
+    // // Creates submatrix_00 of l_factor.
+    // auto factor_submtx_00 = factor->get_submatrix_00();
+    // for (auto block = 0; block < num_blocks; block++) {
+    //     if (1) {
+    //         const dim<2> block_size = {partitions[block + 1] -
+    //         partitions[block],
+    //                                    partitions[block + 1] -
+    //                                    partitions[block]};
+    //         auto tmp = array<ValueType>(exec, block_size[0] * block_size[1]);
+    //         tmp.fill(0.0);
+    //         factor_submtx_00->push_back(std::move(
+    //             dense::create(exec, block_size, std::move(tmp), stride)));
+    //     }
+    // }
 
-    initialize_submatrix_11(exec, partitions, mtx, submtx_11);
-    factorize_submatrix_11(exec, partitions, mtx, submtx_11);
+    // // Creates submatrix_11 of l_factor.
+    // {
+    //     auto l_submtx_11 = l_factor->get_submatrix_11();
+    //     const dim<2> block_size = {size[0] -
+    //     static_cast<size_type>(partitions[num_blocks]),
+    //                                size[1] -
+    //                                static_cast<size_type>(partitions[num_blocks])};
+    //     auto tmp = array<ValueType>(exec, block_size[0] * block_size[1]);
+    //     tmp.fill(0.0);
+    //     l_submtx_11 = dense::create(exec, block_size, std::move(tmp),
+    //     stride);
+    // }
 
-    // preprocess_submatrix_12(exec, partitions, mtx, submtx_12,
-    // row_ptrs_src_cur_array, row_ptrs_dst_cur_array);
-    // initialize_submatrix_12(exec, partitions, mtx, submtx_12,
-    // row_ptrs_src_cur_array); factorize_submatrix_12(exec, partitions,
-    // submtx_11, submtx_12);
+    // // Computes nnz of submatrix_01 of l_factor.
+    // IndexType nnz_l = 0;
+    // auto factor_submtx_10 = factor->get_submatrix_01();
+    // exec->copy(size[0] + 1, a_row_ptrs, a_cur_row_ptrs);
+    // for (auto block = 0; block < num_blocks; block++) {
+    //     IndexType col_min = 0;
+    //     IndexType row_min = 0;
+    //     IndexType num_occurences = 0;
+    //     gko::span row_span{partitions[block], partitions[block + 1]};
+    //     const auto block_length = row_span.end() - row_span.begin();
+    //     auto remaining_nnz = compute_remaining_nnz_row_check(row_span,
+    //         a_row_ptrs, a_cur_row_ptrs);
+    //     auto factor_values = factor_submtx_10[block].get_values();
+    //     auto factor_col_idxs = factor_submtx_10[block].get_col_idxs();
+    //     while (remaining_nnz > 0) {
+    //         find_min_col(size, row_span, &col_min, a_col_idxs, a_row_ptrs,
+    //         a_cur_row_ptrs); push_wavefront(size, row_span, col_min,
+    //         &remaining_nnz,
+    //                        a_col_idxs, a_row_ptrs,
+    //                        &nnz_l, factor_cur_row_ptrs);
+    //     }
+    // }
 
-    // preprocess_submatrix_21(exec, partitions, mtx, submtx_21,
-    // col_ptrs_dst_cur_array, row_ptrs_src_cur_array);
-    // initialize_submatrix_21(exec, workspace->get_partitions(), mtx,
-    // workspace->get_submatrix_21()); factorize_submatrix_21(exec,
-    // workspace->get_partitions(), workspace->get_submatrix_11(),
-    // workspace->get_submatrix_21());
+    // // Creates submatrix_10 of factor.
+    // components::prefix_sum(exec, l_cur_row_ptrs, size[0]);
+    // array<IndexType> factor_col_idxs = {exec, nnz_l};
+    // array<ValueType> factor_values = {exec, nnz_l};
+    // u_col_idxs.fill(0);
+    // u_values.fill(0.0);
+    // exec->copy(size[0] + 1, a_row_ptrs, a_cur_row_ptrs);
+    // exec->copy(size[0] + 1, l_row_ptrs, l_cur_row_ptrs);
+    // for (auto block = 0; block < num_blocks; block++) {
+    //     gko::span row_span = {partition_idxs[block], partition_idxs[block +
+    //     1]} const auto block_length = partition_idxs[block + 1] -
+    //     partition_idxs[block]; IndexType col_min = 0; IndexType remaining_nnz
+    //     = 0; auto remaining_nnz = compute_remaining_nnz_row_check(
+    //         row_span, a_row_ptrs, a_cur_row_ptrs);
+    //     while (remaining_nnz > 0) {
+    //         find_min_col(size, row_span, &col_min, a_col_idxs, a_row_ptrs,
+    //         a_cur_row_ptrs); copy_off_diagonal_block(split_index, row_span,
+    //         col_min,
+    //             &remaining_nnz,
+    //             a_values, a_col_idxs, tmp_a_row_ptrs,
+    //             u_values, u_col_idxs, u_row_ptrs);
+    //     }
+    // }
+    // submtx_01 = matrix::Csr<ValueType, IndexType>::create(exec, size,
+    // std::move(u_values),
+    //     std::move(u_col_idxs), std::move(u_row_ptrs));
 
-    // initialize_submatrix_22(exec, workspace->get_partitions(),
-    //                        workspace->get_submatrix_11(),
-    //                        workspace->get_submatrix_12(),
-    //                        workspace->get_submatrix_21(),
-    //                        workspace->get_submatrix_22());
-    // factorize_submatrix_22(exec, workspace->get_submatrix_22());
+    return l_factor;
 }
 
-GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
-    GKO_DECLARE_ARROW_LU_COMPUTE_FACTORS_KERNEL);
+template <typename ValueType, typename IndexType>
+std::unique_ptr<matrix::Arrow<ValueType, IndexType>> create_l_factor(
+    std::shared_ptr<const DefaultExecutor> exec,
+    const matrix::Arrow<ValueType, IndexType>* a_matrix)
+{
+    std::unique_ptr<matrix::Arrow<ValueType, IndexType>> l_factor;
+    create_factor(exec, a_matrix->get_submatrix_00(),
+                  a_matrix->get_submatrix_10(), a_matrix->get_submatrix_11(),
+                  l_factor->get_submatrix_00(), l_factor->get_submatrix_10(),
+                  l_factor->get_submatrix_11());
+    return l_factor;
+}
 
+template <typename ValueType, typename IndexType>
+std::unique_ptr<matrix::Arrow<ValueType, IndexType>> create_u_factor(
+    std::shared_ptr<const DefaultExecutor> exec,
+    const matrix::Arrow<ValueType, IndexType>* a_matrix)
+{
+    std::unique_ptr<matrix::Arrow<ValueType, IndexType>> u_factor;
+    create_factor(exec, a_matrix->get_submatrix_00(),
+                  a_matrix->get_submatrix_01(), a_matrix->get_submatrix_11(),
+                  u_factor->get_submatrix_00(), u_factor->get_submatrix_01(),
+                  u_factor->get_submatrix_11());
+    return u_factor;
+}
 
 }  // namespace arrow_lu
-}  // namespace omp
+}  // namespace reference
 }  // namespace kernels
 }  // namespace gko

@@ -66,7 +66,7 @@ template <typename ValueType, typename IndexType>
 class Sellp;
 
 template <typename ValueType, typename IndexType>
-class SparsityArrow;
+class SparsityCsr;
 
 template <typename ValueType, typename IndexType>
 class Arrow;
@@ -115,46 +115,47 @@ namespace detail {}  // namespace detail
  * @tparam ValueType  precision of matrix elements
  * @tparam IndexType  precision of matrix indexes
  *
- * @ingroup csr
+ * @ingroup arrow
  * @ingroup mat_formats
  * @ingroup LinOp
  */
 template <typename ValueType = default_precision, typename IndexType = int32>
 class Arrow : public EnableLinOp<Arrow<ValueType, IndexType>>,
-              public EnableCreateMethod<Arrow<ValueType, IndexType>>,
-              public ConvertibleTo<Arrow<next_precision<ValueType>, IndexType>>,
-              public ConvertibleTo<Dense<ValueType>>,
-              public ConvertibleTo<Coo<ValueType, IndexType>>,
-              public ConvertibleTo<Ell<ValueType, IndexType>>,
-              public ConvertibleTo<Fbcsr<ValueType, IndexType>>,
-              public ConvertibleTo<Hybrid<ValueType, IndexType>>,
-              public ConvertibleTo<Sellp<ValueType, IndexType>>,
-              public ConvertibleTo<SparsityArrow<ValueType, IndexType>>,
-              public DiagonalExtractable<ValueType>,
-              public ReadableFromMatrixData<ValueType, IndexType>,
-              public WritableToMatrixData<ValueType, IndexType>,
-              public Transposable,
-              public Permutable<IndexType>,
-              public EnableAbsoluteComputation<
-                  remove_complex<Arrow<ValueType, IndexType>>>,
-              public ScaledIdentityAddable {
+              public EnableCreateMethod<Arrow<ValueType, IndexType>>  //,
+//   public ConvertibleTo<Arrow<next_precision<ValueType>, IndexType>>//,
+//              public ConvertibleTo<Dense<ValueType>>,
+//              public ConvertibleTo<Coo<ValueType, IndexType>>,
+//              public ConvertibleTo<Ell<ValueType, IndexType>>,
+//              public ConvertibleTo<Fbcsr<ValueType, IndexType>>,
+//              public ConvertibleTo<Hybrid<ValueType, IndexType>>,
+//              public ConvertibleTo<Sellp<ValueType, IndexType>>,
+//              public ConvertibleTo<SparsityCsr<ValueType, IndexType>>,
+//              public DiagonalExtractable<ValueType>,
+//              public ReadableFromMatrixData<ValueType, IndexType>,
+//              public WritableToMatrixData<ValueType, IndexType>,
+//              public Transposable,
+//              public Permutable<IndexType>,
+//              public EnableAbsoluteComputation<
+//                  remove_complex<Arrow<ValueType, IndexType>>>,
+// public ScaledIdentityAddable
+{
     friend class EnableCreateMethod<Arrow>;
     friend class EnablePolymorphicObject<Arrow, LinOp>;
-    friend class Coo<ValueType, IndexType>;
-    friend class Dense<ValueType>;
-    friend class Diagonal<ValueType>;
-    friend class Ell<ValueType, IndexType>;
-    friend class Hybrid<ValueType, IndexType>;
-    friend class Sellp<ValueType, IndexType>;
-    friend class SparsityArrow<ValueType, IndexType>;
-    friend class Fbcsr<ValueType, IndexType>;
-    friend class ArrowBuilder<ValueType, IndexType>;
-    friend class Arrow<to_complex<ValueType>, IndexType>;
+    //    friend class Coo<ValueType, IndexType>;
+    //    friend class Dense<ValueType>;
+    //    friend class Diagonal<ValueType>;
+    //    friend class Ell<ValueType, IndexType>;
+    //    friend class Hybrid<ValueType, IndexType>;
+    //    friend class Sellp<ValueType, IndexType>;
+    //    friend class SparsityCsr<ValueType, IndexType>;
+    //    friend class Fbcsr<ValueType, IndexType>;
+    //    friend class ArrowBuilder<ValueType, IndexType>;
+    //    friend class Arrow<to_complex<ValueType>, IndexType>;
 
 public:
     using EnableLinOp<Arrow>::convert_to;
     using EnableLinOp<Arrow>::move_to;
-    using ReadableFromMatrixData<ValueType, IndexType>::read;
+    // using ReadableFromMatrixData<ValueType, IndexType>::read;
     using value_type = ValueType;
     using index_type = IndexType;
     using transposed_type = Arrow<ValueType, IndexType>;
@@ -174,6 +175,13 @@ public:
      */
     Arrow& operator=(Arrow&&);
 
+    //   Arrow(std::shared_ptr<const Executor> exec, array<index_type>&
+    //   partitions_in) {
+    //         this->partitions_ = std::move(partitions_in);
+    //     }
+
+    Arrow() {}
+
     /**
      * Copy-constructs a Arrow matrix. Inherits executor, strategy and data.
      */
@@ -186,14 +194,133 @@ public:
      */
     Arrow(Arrow&&);
 
+    // friend class Csr<next_precision<ValueType>, IndexType>;
+
+    //    void convert_to(
+    //        Arrow<next_precision<ValueType>, IndexType>* result) const
+    //        override;
+    //
+    //    void move_to(Arrow<next_precision<ValueType>, IndexType>* result)
+    //    override;
+    //
+    //    void convert_to(Dense<ValueType>* other) const override;
+    //
+    //    void move_to(Dense<ValueType>* other) override;
+    //
+    //    void convert_to(Coo<ValueType, IndexType>* result) const override;
+    //
+    //    void move_to(Coo<ValueType, IndexType>* result) override;
+    //
+    //    void convert_to(Ell<ValueType, IndexType>* result) const override;
+    //
+    //    void move_to(Ell<ValueType, IndexType>* result) override;
+    //
+    //    void convert_to(Fbcsr<ValueType, IndexType>* result) const override;
+    //
+    //    void move_to(Fbcsr<ValueType, IndexType>* result) override;
+    //
+    //    void convert_to(Hybrid<ValueType, IndexType>* result) const override;
+    //
+    //    void move_to(Hybrid<ValueType, IndexType>* result) override;
+    //
+    //    void convert_to(Sellp<ValueType, IndexType>* result) const override;
+    //
+    //    void move_to(Sellp<ValueType, IndexType>* result) override;
+    //
+    //    void convert_to(SparsityCsr<ValueType, IndexType>* result) const
+    //    override;
+    //
+    //    void move_to(SparsityCsr<ValueType, IndexType>* result) override;
+    //
+    //    void convert_to(Arrow<ValueType, IndexType>* result) const override;
+    //
+    //    void move_to(Arrow<ValueType, IndexType>* result) override;
+
+    //    void read(const mat_data& data) override;
+    //
+    //    void read(const device_mat_data& data) override;
+    //
+    //    void read(device_mat_data&& data) override;
+    //
+    //    void write(mat_data& data) const override;
+    //
+    void apply_impl(const LinOp* b,
+                    LinOp* x) const override GKO_NOT_IMPLEMENTED;
+
+    void apply_impl(const LinOp* alpha, const LinOp* b, const LinOp* beta,
+                    LinOp* x) const override GKO_NOT_IMPLEMENTED;
+
+    //    std::unique_ptr<LinOp> transpose() const override;
+    //
+    //    std::unique_ptr<LinOp> conj_transpose() const override;
+    //
+    //    std::unique_ptr<LinOp> permute(
+    //        const array<IndexType>* permutation_indices) const override;
+    //
+    //    std::unique_ptr<LinOp> inverse_permute(
+    //        const array<IndexType>* inverse_permutation_indices) const
+    //        override;
+    //
+    //    std::unique_ptr<LinOp> row_permute(
+    //        const array<IndexType>* permutation_indices) const override;
+    //
+    //    std::unique_ptr<LinOp> column_permute(
+    //        const array<IndexType>* permutation_indices) const override;
+    //
+    //    std::unique_ptr<LinOp> inverse_row_permute(
+    //        const array<IndexType>* inverse_permutation_indices) const
+    //        override;
+    //
+    //    std::unique_ptr<LinOp> inverse_column_permute(
+    //        const array<IndexType>* inverse_permutation_indices) const
+    //        override;
+    //
+    //    std::unique_ptr<Diagonal<ValueType>> extract_diagonal() const
+    //    override;
+    //
+    //    std::unique_ptr<absolute_type> compute_absolute() const override;
+    //
+    //    void compute_absolute_inplace() override;
+
+    const IndexType* get_const_partition_idxs() const;
+
+    size_type get_partitions_num_elems() const;
+
+    void set_partitions(array<IndexType>& partitions_in);
+
+    IndexType get_num_blocks();
+
+    std::shared_ptr<std::vector<std::unique_ptr<gko::LinOp>>> get_submatrix_00()
+        const;
+
+    std::shared_ptr<std::vector<std::unique_ptr<gko::LinOp>>> get_submatrix_01()
+        const;
+
+    std::shared_ptr<std::vector<std::unique_ptr<gko::LinOp>>> get_submatrix_10()
+        const;
+
+    std::shared_ptr<std::vector<std::unique_ptr<gko::LinOp>>> get_submatrix_11()
+        const;
+
+protected:
+    Arrow(std::shared_ptr<const Executor> exec) : EnableLinOp<Arrow>(exec) {}
+
+    Arrow(std::shared_ptr<const Executor> exec, array<IndexType>& partitions)
+        : EnableLinOp<Arrow>(exec)
+    {
+        this->partitions_ = std::move(partitions);
+    }
+
 private:
     using csr = matrix::Csr<ValueType, IndexType>;
     using dense = matrix::Dense<ValueType>;
     array<index_type> partitions_;
-    std::vector<std::unique_ptr<gko::LinOp>> submtx_00_;
-    std::shared_ptr<csr> submtx_01_;
-    std::shared_ptr<csr> submtx_10_;
-    std::shared_ptr<dense> submtx_11_;
+    std::shared_ptr<std::vector<std::unique_ptr<gko::LinOp>>> submtx_00_;
+    std::shared_ptr<std::vector<std::unique_ptr<gko::LinOp>>> submtx_01_;
+    std::shared_ptr<std::vector<std::unique_ptr<gko::LinOp>>> submtx_10_;
+    std::shared_ptr<std::vector<std::unique_ptr<gko::LinOp>>> submtx_11_;
+
+    // void add_scaled_identity_impl(const LinOp* a, const LinOp* b) override;
 };
 
 

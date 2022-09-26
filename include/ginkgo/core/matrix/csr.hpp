@@ -57,6 +57,9 @@ template <typename ValueType, typename IndexType>
 class Ell;
 
 template <typename ValueType, typename IndexType>
+class Arrow;
+
+template <typename ValueType, typename IndexType>
 class Hybrid;
 
 template <typename ValueType, typename IndexType>
@@ -130,6 +133,7 @@ class Csr : public EnableLinOp<Csr<ValueType, IndexType>>,
             public ConvertibleTo<Dense<ValueType>>,
             public ConvertibleTo<Coo<ValueType, IndexType>>,
             public ConvertibleTo<Ell<ValueType, IndexType>>,
+            public ConvertibleTo<Arrow<ValueType, IndexType>>,
             public ConvertibleTo<Fbcsr<ValueType, IndexType>>,
             public ConvertibleTo<Hybrid<ValueType, IndexType>>,
             public ConvertibleTo<Sellp<ValueType, IndexType>>,
@@ -738,6 +742,10 @@ public:
     void convert_to(SparsityCsr<ValueType, IndexType>* result) const override;
 
     void move_to(SparsityCsr<ValueType, IndexType>* result) override;
+
+    void convert_to(Arrow<ValueType, IndexType>* result) const override;
+
+    void move_to(Arrow<ValueType, IndexType>* result) override;
 
     void read(const mat_data& data) override;
 

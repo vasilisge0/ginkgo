@@ -43,6 +43,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <ginkgo/core/base/exception.hpp>
 #include <ginkgo/core/base/executor.hpp>
 #include <ginkgo/core/base/math.hpp>
+#include <ginkgo/core/matrix/arrow.hpp>
 #include <ginkgo/core/matrix/coo.hpp>
 #include <ginkgo/core/matrix/dense.hpp>
 #include <ginkgo/core/matrix/diagonal.hpp>
@@ -76,6 +77,8 @@ protected:
     using Hybrid = gko::matrix::Hybrid<value_type, index_type>;
     using Vec = gko::matrix::Dense<value_type>;
     using MixedVec = gko::matrix::Dense<gko::next_precision<value_type>>;
+    using Arrow = gko::matrix::Arrow<value_type, index_type>;
+    using array = gko::array<index_type>;
 
     Csr()
         : exec(gko::ReferenceExecutor::create()),
@@ -87,11 +90,19 @@ protected:
                                   std::make_shared<typename Mtx::classical>())),
           mtx3_unsorted(
               Mtx::create(exec, gko::dim<2>(3, 3), 7,
-                          std::make_shared<typename Mtx::classical>()))
+                          std::make_shared<typename Mtx::classical>())),
+          mtx4(Mtx::create(exec, gko::dim<2>(10, 10), 30,
+                           std::make_shared<typename Mtx::classical>()))
+    //    ,
+    //   arrow_mtx()
     {
         this->create_mtx(mtx.get());
         this->create_mtx2(mtx2.get());
         this->create_mtx3(mtx3_sorted.get(), mtx3_unsorted.get());
+        this->create_mtx4(mtx4.get());
+        // auto tmp_array = gko::array<index_type>(exec, {0, 3, 6, 8});
+        // arrow_mtx = Arrow(exec, tmp_array);
+        // this->create_arrow_mtx(exec, arrow_mtx.get());
     }
 
     void create_mtx(Mtx* m)
@@ -199,6 +210,95 @@ protected:
         cols_u[5] = 2;
         cols_u[6] = 0;
     }
+
+    void create_mtx4(Mtx* csr_mtx)
+    {
+        auto values = csr_mtx->get_values();
+        auto col_idxs = csr_mtx->get_col_idxs();
+        auto row_ptrs = csr_mtx->get_row_ptrs();
+
+        values[0] = 2.0;
+        values[1] = 0.5;
+        values[2] = 0.2;
+        values[3] = 2.0;
+        values[4] = 1.0;
+        values[5] = 0.5;
+        values[6] = 2.0;
+        values[7] = 0.1;
+        values[8] = 3.0;
+        values[9] = -1.0;
+        values[10] = 0.2;
+        values[11] = -1.0;
+        values[12] = 3.0;
+        values[13] = -1.0;
+        values[14] = 0.1;
+        values[15] = -1.0;
+        values[16] = 3.0;
+        values[17] = 2.0;
+        values[18] = -1.0;
+        values[19] = -1.0;
+        values[20] = 2.0;
+        values[21] = 0.1;
+        values[22] = 0.2;
+        values[23] = 0.1;
+        values[24] = 0.1;
+        values[25] = 2.0;
+        values[26] = 0.1;
+        values[27] = 0.8;
+        values[28] = 0.2;
+        values[29] = 0.1;
+        values[30] = 2.0;
+
+        col_idxs[0] = 0;
+        col_idxs[1] = 2;
+        col_idxs[2] = 8;
+        col_idxs[3] = 1;
+        col_idxs[4] = 9;
+        col_idxs[5] = 0;
+        col_idxs[6] = 2;
+        col_idxs[7] = 8;
+        col_idxs[8] = 3;
+        col_idxs[9] = 4;
+        col_idxs[10] = 9;
+        col_idxs[11] = 3;
+        col_idxs[12] = 4;
+        col_idxs[13] = 5;
+        col_idxs[14] = 8;
+        col_idxs[15] = 4;
+        col_idxs[16] = 5;
+        col_idxs[17] = 6;
+        col_idxs[18] = 7;
+        col_idxs[19] = 6;
+        col_idxs[20] = 7;
+        col_idxs[21] = 8;
+        col_idxs[22] = 0;
+        col_idxs[23] = 2;
+        col_idxs[24] = 4;
+        col_idxs[25] = 8;
+        col_idxs[26] = 9;
+        col_idxs[27] = 1;
+        col_idxs[28] = 3;
+        col_idxs[29] = 8;
+        col_idxs[30] = 9;
+
+        row_ptrs[0] = 0;
+        row_ptrs[1] = 3;
+        row_ptrs[2] = 5;
+        row_ptrs[3] = 8;
+        row_ptrs[4] = 11;
+        row_ptrs[5] = 15;
+        row_ptrs[6] = 17;
+        row_ptrs[7] = 19;
+        row_ptrs[8] = 22;
+        row_ptrs[9] = 27;
+        row_ptrs[10] = 31;
+    }
+
+    // void create_arrow_mtx(std::shared_ptr<const gko::Executor> exec, Arrow*
+    // arrow_mtx) {
+    //     auto tmp = gko::array<index_type>(exec, {0, 3, 6, 8});
+    //     // arrow_mtx->set_partitions(tmp);
+    // }
 
     void assert_equal_to_mtx(const Coo* m)
     {
@@ -349,6 +449,8 @@ protected:
     std::unique_ptr<Mtx> mtx2;
     std::unique_ptr<Mtx> mtx3_sorted;
     std::unique_ptr<Mtx> mtx3_unsorted;
+    std::unique_ptr<Mtx> mtx4;
+    // std::unique_ptr<Arrow> arrow_mtx;
     index_type invalid_index = gko::invalid_index<index_type>();
 };
 
@@ -701,7 +803,6 @@ TYPED_TEST(Csr, MovesToSellp)
     this->assert_equal_to_mtx(sellp_mtx.get());
 }
 
-
 TYPED_TEST(Csr, ConvertsToSparsityCsr)
 {
     using SparsityCsr = typename TestFixture::SparsityCsr;
@@ -762,6 +863,32 @@ TYPED_TEST(Csr, ConvertsToHybridByColumn2)
     this->mtx2->convert_to(hybrid_mtx.get());
 
     this->assert_equal_to_mtx2(hybrid_mtx.get());
+}
+
+
+TYPED_TEST(Csr, ConvertsToArrow)
+{
+    using Arrow = typename TestFixture::Arrow;
+
+    // auto arrow_mtx = Arrow::create(this->mtx->get_executor());
+
+    // this->mtx->convert_to(sellp_mtx.get());
+
+    // this->assert_equal_to_mtx(sellp_mtx.get());
+}
+
+
+TYPED_TEST(Csr, MovesToArrow)
+{
+    // using Sellp = typename TestFixture::Sellp;
+    // using Csr = typename TestFixture::Mtx;
+    // auto sellp_mtx = Sellp::create(this->mtx->get_executor());
+    // auto csr_ref = Csr::create(this->mtx->get_executor());
+
+    // csr_ref->copy_from(this->mtx.get());
+    // csr_ref->move_to(sellp_mtx.get());
+
+    // this->assert_equal_to_mtx(sellp_mtx.get());
 }
 
 
