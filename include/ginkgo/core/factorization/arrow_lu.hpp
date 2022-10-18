@@ -79,18 +79,15 @@ protected:
         : Composition<ValueType>{factory->get_executor()},
           parameters_{factory->get_parameters()}
     {
-        // generate(system_matrix, partitions)
+        std::cout << "before generate" << '\n';
+        // generate(system_matrix)
         //     ->move_to(this);
     }
 
     std::unique_ptr<Composition<ValueType>> generate(
-        const std::shared_ptr<const LinOp>& arrow_system_matrix,
-        array<IndexType>& partitions) const;
+        const std::shared_ptr<const LinOp>& arrow_system_matrix) const;
 };
 
-// #define GKO_DECLARE_ARROWLU(ValueType, IndexType) \
-//     class ArrowLu<ValueType, IndexType>
-// GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(GKO_DECLARE_ARROWLU);
 
 }  // namespace factorization
 }  // namespace gko

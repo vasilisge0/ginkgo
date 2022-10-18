@@ -263,12 +263,10 @@ void factorize_diagonal_submatrix(
     std::shared_ptr<const DefaultExecutor> exec, dim<2> size,
     IndexType num_blocks, const IndexType* partitions,
     IndexType* a_cur_row_ptrs,
-    const factorization::arrow_lu::collection_of_matrices<ValueType>* matrices,
-    factorization::arrow_lu::collection_of_matrices<ValueType>* l_factors,
-    factorization::arrow_lu::collection_of_matrices<ValueType>* u_factors)
-// const LinOp* a_linop,
-// LinOp* l_factors,
-// LinOp* u_factors)
+    const std::vector<std::unique_ptr<LinOp>>* matrices,
+    std::vector<std::unique_ptr<LinOp>>* l_factors,
+    std::vector<std::unique_ptr<LinOp>>* u_factors,
+    ValueType dummy_valuetype_var)
 {
     // using dense = matrix::Dense<ValueType>;
     // const auto stride = 1;
@@ -300,74 +298,79 @@ void factorize_diagonal_submatrix(
 template <typename ValueType, typename IndexType>
 void factorize_off_diagonal_submatrix(
     std::shared_ptr<const DefaultExecutor> exec, IndexType split_index,
-    IndexType num_blocks, const IndexType* partitions, const LinOp* factor_00,
-    matrix::Csr<ValueType, IndexType>* factor_01)
+    IndexType num_blocks, const IndexType* partitions,
+    std::vector<std::unique_ptr<LinOp>>* triang_factors,
+    std::vector<std::unique_ptr<LinOp>>* off_diagonal_blocks,
+    ValueType dummy_valuetype_var)
 {
-    using dense = matrix::Dense<ValueType>;
-    size_type stride = 1;
-    array<ValueType> res_values =
-        array<ValueType>(exec, factor_01.get_num_elems());
-    exec->copy(factor_01.get_num_elems(), factor_01->get_values(),
-               res_values.get_data());
-    for (auto block = 0; block < num_blocks; block++) {
-        auto nnz_in_block =
-            factor_01->row_ptrs[block + 1] - factor_01->row_ptrs[block];
-        if (nnz_in_block > 0) {
-            const auto num_rows = partitions[block + 1] - partitions[block];
-            const auto num_cols = factor_01.get_num_elems() / num_rows;
-            dim<2> dim_u = {num_rows, num_cols};
-            auto residuals =
-                dense::create(exec, dim_u,
-                              array<ValueType>::view(
-                                  exec, factor_01.get_num_elems(), res_values),
-                              stride);
+    // using dense = matrix::Dense<ValueType>;
+    // size_type stride = 1;
+    // array<ValueType> res_values =
+    //     array<ValueType>(exec, factor_01.get_num_elems());
+    // exec->copy(factor_01.get_num_elems(), factor_01->get_values(),
+    //            res_values.get_data());
+    // for (auto block = 0; block < num_blocks; block++) {
+    //     auto nnz_in_block =
+    //         factor_01->row_ptrs[block + 1] - factor_01->row_ptrs[block];
+    //     if (nnz_in_block > 0) {
+    //         const auto num_rows = partitions[block + 1] - partitions[block];
+    //         const auto num_cols = factor_01.get_num_elems() / num_rows;
+    //         dim<2> dim_u = {num_rows, num_cols};
+    //         auto residuals =
+    //             dense::create(exec, dim_u,
+    //                           array<ValueType>::view(
+    //                               exec, factor_01.get_num_elems(),
+    //                               res_values),
+    //                           stride);
 
-            // Solves l_factor_00 * X = u_factor_01
-            const auto row_index_begin = partitions[block];
-            const auto row_index_end = partitions[block + 1];
-            const auto block_length = static_cast<size_type>(
-                partitions[block + 1] - partitions[block]);
-            const dim<2> dim_l = {block_length, block_length};
-            auto factor_00_submtx = share(dense::create(exec));
-            as<ConvertibleTo<dense>>(factor_00[block])
-                ->convert_to(factor_00_submtx.get());
-            auto l_values = factor_00_submtx->get_values();
-            auto u_values = &factor_01->get_values()[row_index_begin];
-            auto rhs =
-                dense::create(exec, dim_u,
-                              array<ValueType>::view(
-                                  exec, factor_01.get_num_elems(), u_values),
-                              stride);
-            lower_triangular_solve_kernel(dim_l, l_values, dim_u, u_values);
+    //         // Solves l_factor_00 * X = u_factor_01
+    //         const auto row_index_begin = partitions[block];
+    //         const auto row_index_end = partitions[block + 1];
+    //         const auto block_length = static_cast<size_type>(
+    //             partitions[block + 1] - partitions[block]);
+    //         const dim<2> dim_l = {block_length, block_length};
+    //         auto factor_00_submtx = share(dense::create(exec));
+    //         as<ConvertibleTo<dense>>(factor_00[block])
+    //             ->convert_to(factor_00_submtx.get());
+    //         auto l_values = factor_00_submtx->get_values();
+    //         auto u_values = &factor_01->get_values()[row_index_begin];
+    //         auto rhs =
+    //             dense::create(exec, dim_u,
+    //                           array<ValueType>::view(
+    //                               exec, factor_01.get_num_elems(), u_values),
+    //                           stride);
+    //         lower_triangular_solve_kernel(dim_l, l_values, dim_u, u_values);
 
-            // Computes residual vectors.
-            dim<2> dim_rnorm = {1, dim_u[1]};
-            array<ValueType> rnorms_values = {exec, dim_rnorm[1]};
-            auto rnorms = dense::create(exec, dim_rnorm, rnorms_values, stride);
-            rnorms.fill(0.0);
-            auto solution = dense::create(
-                exec, dim_u,
-                array<ValueType>::view(exec, dim_u[0] * dim_u[1], u_values),
-                stride);
-            exec->copy(factor_01.get_num_elems(), rhs, residuals);
-            auto one =
-                gko::initialize<gko::matrix::Dense<ValueType>>({1.0}, exec);
-            auto minus_one =
-                gko::initialize<gko::matrix::Dense<ValueType>>({-1.0}, exec);
-            factor_00_submtx->apply(solution, minus_one, residuals, one);
+    //         // Computes residual vectors.
+    //         dim<2> dim_rnorm = {1, dim_u[1]};
+    //         array<ValueType> rnorms_values = {exec, dim_rnorm[1]};
+    //         auto rnorms = dense::create(exec, dim_rnorm, rnorms_values,
+    //         stride); rnorms.fill(0.0); auto solution = dense::create(
+    //             exec, dim_u,
+    //             array<ValueType>::view(exec, dim_u[0] * dim_u[1], u_values),
+    //             stride);
+    //         exec->copy(factor_01.get_num_elems(), rhs, residuals);
+    //         auto one =
+    //             gko::initialize<gko::matrix::Dense<ValueType>>({1.0}, exec);
+    //         auto minus_one =
+    //             gko::initialize<gko::matrix::Dense<ValueType>>({-1.0}, exec);
+    //         factor_00_submtx->apply(solution, minus_one, residuals, one);
 
-            // Computes residual norms.
-            residuals.get()->compute_norm2(rnorms.get());
-            for (auto i = 0; i < rnorms->get_size()[1]; ++i) {
-                if (std::abs(rnorms->get_values()[i]) > 1e-8) {
-                    break;
-                } else {
-                    // Refine if required.
-                }
-            }
-        }
-    }
+    //         // Computes residual norms.
+    //         residuals.get()->compute_norm2(rnorms.get());
+    //         for (auto i = 0; i < rnorms->get_size()[1]; ++i) {
+    //             if (std::abs(rnorms->get_values()[i]) > 1e-8) {
+    //                 break;
+    //             } else {
+    //                 // Refine if required.
+    //             }
+    //         }
+    //     }
+    // }
 }
+
+GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
+    GKO_DECLARE_ARROWLU_FACTORIZE_OFF_DIAGONAL_SUBMATRIX_KERNEL);
 
 
 template <typename ValueType, typename IndexType>
@@ -438,18 +441,17 @@ template <typename ValueType, typename IndexType>
 void compute_schur_complement(
     std::shared_ptr<const DefaultExecutor> exec, IndexType num_blocks,
     const IndexType* partitions,
-    const factorization::arrow_lu::collection_of_matrices<ValueType>*
-        l_factors_10,
-    const factorization::arrow_lu::collection_of_matrices<ValueType>*
-        u_factors_01,
-    factorization::arrow_lu::collection_of_matrices<ValueType>*
-        schur_complement_in)
+    const std::vector<std::unique_ptr<LinOp>>* l_factors_10,
+    const std::vector<std::unique_ptr<LinOp>>* u_factors_01,
+    std::vector<std::unique_ptr<LinOp>>* schur_complement_in,
+    ValueType dummy_valuetype_var)
 {
-    using csr = matrix::Csr<ValueType, IndexType>;
-    const auto l_factor = as<csr>(l_factors_10);
-    const auto u_factor = as<csr>(u_factors_01);
-    const auto schur_complement = as<csr>(schur_complement_in);
-    spdgemm(exec, num_blocks, partitions, l_factor, u_factor, schur_complement);
+    // using csr = matrix::Csr<ValueType, IndexType>;
+    // const auto l_factor = as<csr>(l_factors_10);
+    // const auto u_factor = as<csr>(u_factors_01);
+    // const auto schur_complement = as<csr>(schur_complement_in);
+    // spdgemm(exec, num_blocks, partitions, l_factor, u_factor,
+    // schur_complement);
 }
 
 template <typename ValueType, typename IndexType>

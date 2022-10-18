@@ -69,12 +69,11 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // }
 
 template <typename ValueType, typename IndexType>
-void factorize_diagonal_submatrix(std::shared_ptr<const DefaultExecutor> exec,
-                                  dim<2> size, IndexType num_blocks,
-                                  const IndexType* partitions,
-                                  IndexType* a_cur_row_ptrs,
-                                  const LinOp* a_linop, LinOp* l_factors,
-                                  LinOp* u_factors) GKO_NOT_IMPLEMENTED;
+void void factorize_diagonal_submatrix(
+    std::shared_ptr<const DefaultExecutor> exec, dim<2> size,
+    IndexType num_blocks, const IndexType* partitions,
+    IndexType* a_cur_row_ptrs, const LinOp* matrices, LinOp* l_factors,
+    LinOp* u_factors, ValueType dummy_valuetype_var) GKO_NOT_IMPLEMENTED;
 
 GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
     GKO_DECLARE_ARROW_LU_FACTORIZE_DIAGONAL_SUBMATRIX_KERNEL);

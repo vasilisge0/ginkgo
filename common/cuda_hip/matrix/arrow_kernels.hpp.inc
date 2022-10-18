@@ -1,75 +1,75 @@
-// /*******************************<GINKGO
-// LICENSE>****************************** Copyright (c) 2017-2022, the Ginkgo
-// authors All rights reserved.
+/*******************************<GINKGO
+LICENSE>****************************** Copyright (c) 2017-2022, the Ginkgo
+authors All rights reserved.
 
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions
-// are met:
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions
+are met:
 
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
+1. Redistributions of source code must retain the above copyright
+notice, this list of conditions and the following disclaimer.
 
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
+2. Redistributions in binary form must reproduce the above copyright
+notice, this list of conditions and the following disclaimer in the
+documentation and/or other materials provided with the distribution.
 
-// 3. Neither the name of the copyright holder nor the names of its
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
+3. Neither the name of the copyright holder nor the names of its
+contributors may be used to endorse or promote products derived from
+this software without specific prior written permission.
 
-// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS
-// IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
-// TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
-// PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-// HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-// LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-// DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-// THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-// ******************************<GINKGO
-// LICENSE>*******************************/
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS
+IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
+TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+******************************<GINKGO
+LICENSE>*******************************/
 
-// #include "core/matrix/arrow_kernels.hpp"
-
-
-// #include <algorithm>
-// #include <iterator>
-// #include <numeric>
-// #include <utility>
+#include "core/matrix/arrow_kernels.hpp"
 
 
-// #include <ginkgo/core/base/array.hpp>
-// #include <ginkgo/core/base/exception_helpers.hpp>
-// #include <ginkgo/core/base/index_set.hpp>
-// #include <ginkgo/core/base/math.hpp>
-// #include <ginkgo/core/matrix/coo.hpp>
-// #include <ginkgo/core/matrix/dense.hpp>
-// #include <ginkgo/core/matrix/ell.hpp>
-// #include <ginkgo/core/matrix/hybrid.hpp>
-// #include <ginkgo/core/matrix/sellp.hpp>
+#include <algorithm>
+#include <iterator>
+#include <numeric>
+#include <utility>
 
 
-// #include "core/base/allocator.hpp"
-// #include "core/base/index_set_kernels.hpp"
-// #include "core/base/iterator_factory.hpp"
-// #include "core/components/fill_array_kernels.hpp"
-// #include "core/components/format_conversion_kernels.hpp"
-// #include "core/components/prefix_sum_kernels.hpp"
-// #include "core/matrix/arrow_builder.hpp"
-// // #include "reference/components/arrow_spgeam.hpp"
+#include <ginkgo/core/base/array.hpp>
+#include <ginkgo/core/base/exception_helpers.hpp>
+#include <ginkgo/core/base/index_set.hpp>
+#include <ginkgo/core/base/math.hpp>
+#include <ginkgo/core/matrix/coo.hpp>
+#include <ginkgo/core/matrix/dense.hpp>
+#include <ginkgo/core/matrix/ell.hpp>
+#include <ginkgo/core/matrix/hybrid.hpp>
+#include <ginkgo/core/matrix/sellp.hpp>
 
 
-// namespace gko {
-// namespace kernels {
-// namespace reference {
-// /**
-//  * @brief The Arrow sparse matrix format namespace.
-//  * @ref Arrow
-//  * @ingroup arrow
-//  */
-// namespace arrow {
+#include "core/base/allocator.hpp"
+#include "core/base/index_set_kernels.hpp"
+#include "core/base/iterator_factory.hpp"
+#include "core/components/fill_array_kernels.hpp"
+#include "core/components/format_conversion_kernels.hpp"
+#include "core/components/prefix_sum_kernels.hpp"
+#include "core/matrix/arrow_builder.hpp"
+// #include "reference/components/arrow_spgeam.hpp"
+
+
+namespace gko {
+namespace kernels {
+namespace reference {
+/**
+ * @brief The Arrow sparse matrix format namespace.
+ * @ref Arrow
+ * @ingroup arrow
+ */
+namespace arrow {
 
 
 // template <typename ValueType, typename IndexType>
@@ -406,7 +406,46 @@
 //     GKO_DECLARE_ARROW_CONVERT_TO_NEXT_PRECISION_KERNEL);
 
 
-// }  // namespace arrow
-// }  // namespace reference
-// }  // namespace kernels
-// }  // namespace gko
+template <typename ValueType, typename IndexType>
+void factorize_diagonal_submatrix(
+    std::shared_ptr<const DefaultExecutor> exec, dim<2> size,
+    IndexType num_blocks, const IndexType* partitions,
+    IndexType* a_cur_row_ptrs,
+    const std::vector<std::unique_ptr<LinOp>>* matrices,
+    std::vector<std::unique_ptr<LinOp>>* l_factors,
+    std::vector<std::unique_ptr<LinOp>>* u_factors,
+    ValueType dummy_valuetype_var) GKO_NOT_IMPLEMENTED;
+
+GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
+    GKO_DECLARE_ARROW_LU_FACTORIZE_DIAGONAL_SUBMATRIX_KERNEL);
+
+
+template <typename ValueType, typename IndexType>
+void factorize_off_diagonal_submatrix(
+    std::shared_ptr<const DefaultExecutor> exec, IndexType split_index,
+    IndexType num_blocks, const IndexType* partitions,
+    std::vector<std::unique_ptr<LinOp>>* triang_factors,
+    std::vector<std::unique_ptr<LinOp>>* off_diagonal_blocks,
+    ValueType dummy_valuetype_var) GKO_NOT_IMPLEMENTED;
+
+GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
+    GKO_DECLARE_ARROWLU_FACTORIZE_OFF_DIAGONAL_SUBMATRIX_KERNEL);
+
+
+template <typename ValueType, typename IndexType>
+void compute_schur_complement(
+    std::shared_ptr<const DefaultExecutor> exec, IndexType num_blocks,
+    const IndexType* partitions,
+    const std::vector<std::unique_ptr<LinOp>>* l_factors_10,
+    const std::vector<std::unique_ptr<LinOp>>* u_factors_01,
+    std::vector<std::unique_ptr<LinOp>>* schur_complement_in,
+    ValueType dummy_valuetype_var) GKO_NOT_IMPLEMENTED;
+
+GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
+    GKO_DECLARE_ARROWLU_COMPUTE_SCHUR_COMPLEMENT_KERNEL);
+
+
+}  // namespace arrow
+}  // namespace reference
+}  // namespace kernels
+}  // namespace gko

@@ -263,26 +263,20 @@ void factorize_diagonal_submatrix(
     std::shared_ptr<const DefaultExecutor> exec, dim<2> size,
     IndexType num_blocks, const IndexType* partitions,
     IndexType* a_cur_row_ptrs,
-    const factorization::arrow_lu::collection_of_matrices<ValueType>*
-        collection_of_matrices,
-    factorization::arrow_lu::collection_of_matrices<ValueType>*
-        collection_of_l_factors,
-    factorization::arrow_lu::collection_of_matrices<ValueType>*
-        collection_of_u_factors,
+    const std::vector<std::unique_ptr<LinOp>>* matrices,
+    std::vector<std::unique_ptr<LinOp>>* l_factors,
+    std::vector<std::unique_ptr<LinOp>>* u_factors,
     ValueType dummy_valuetype_var)
 {
     using dense = matrix::Dense<ValueType>;
     const auto stride = 1;
-    const auto a_linop = collection_of_matrices->linops->begin();
-    auto l_factors = collection_of_l_factors->linops->begin();
-    auto u_factors = collection_of_u_factors->linops->begin();
     for (auto block = 0; block < num_blocks; block++) {
         const auto block_length =
             static_cast<size_type>(partitions[block + 1] - partitions[block]);
         const dim<2> block_size = {block_length, block_length};
-        auto a_submtx = as<dense>(a_linop[block]);
+        auto a_submtx = as<dense>(matrices[block]);
         auto l_submtx = as<dense>(l_factors[block]);
-        auto u_submtx = as<dense> > (u_factors[block]);
+        auto u_submtx = as<dense>(u_factors[block]);
         compute_dense_lu_kernel(a_submtx.get(), l_submtx.get(), u_submtx.get());
     }
 }
@@ -297,23 +291,25 @@ template <typename ValueType, typename IndexType>
 void factorize_off_diagonal_submatrix(
     std::shared_ptr<const DefaultExecutor> exec, IndexType split_index,
     IndexType num_blocks, const IndexType* partitions,
-    const factorization::arrow_lu::collection_of_matrices<ValueType>*
-        triang_factors,
-    factorization::arrow_lu::collection_of_matrices<ValueType>*
-        off_diagonal_blocks)
+    std::vector<std::unique_ptr<LinOp>>* triang_factors,
+    std::vector<std::unique_ptr<LinOp>>* off_diagonal_blocks,
+    ValueType dummy_valuetype_var)
 {
-    auto factors = triang_factors->linops->begin();
-    auto rhs = off_diagonal_blocks->linops->begin();
     using dense = matrix::Dense<ValueType>;
+    using csr = matrix::Csr<ValueType, IndexType>;
+    auto factors = as<dense>(triang_factors);
+    auto rhs = as<csr>(off_diagonal_blocks);
     size_type stride = 1;
-    array<ValueType> res_values =
-        array<ValueType>(exec, factors.get_num_elems());
-    exec->copy(factors.get_num_elems(), factors->get_values(),
-               res_values.get_data());
+
     for (auto block = 0; block < num_blocks; block++) {
         auto nnz_in_block =
-            factors[block + 1]->row_ptrs - factors[block]->row_ptrs;
+            factors[block + 1].row_ptrs - factors[block].row_ptrs;
         if (nnz_in_block > 0) {
+            array<ValueType> res_values =
+                array<ValueType>(exec, factors[block].get_num_elems());
+            exec->copy(factors[block].get_num_elems(), factors->get_values(),
+                       res_values.get_data());
+
             const auto num_rows = partitions[block + 1] - partitions[block];
             const auto num_cols = factors[block].get_num_elems() / num_rows;
             dim<2> dim_rhs = {num_rows, num_cols};
@@ -329,7 +325,7 @@ void factorize_off_diagonal_submatrix(
             const dim<2> dim_factor = {block_length, block_length};
             auto factor_00_submtx = as<dense>(factors[block]);
             auto factor_values = factor_00_submtx->get_values();
-            auto rhs_values = &rhs[block].get_values();
+            auto rhs_values = rhs[block].get_values();
             IndexType max_iter = 10;
             IndexType iter = 0;
             auto one =
@@ -442,18 +438,15 @@ template <typename ValueType, typename IndexType>
 void compute_schur_complement(
     std::shared_ptr<const DefaultExecutor> exec, IndexType num_blocks,
     const IndexType* partitions,
-    const factorization::arrow_lu::collection_of_matrices<ValueType>*
-        l_factors_10,
-    const factorization::arrow_lu::collection_of_matrices<ValueType>*
-        u_factors_01,
-    factorization::arrow_lu::collection_of_matrices<ValueType>*
-        schur_complement_in)
+    const std::vector<std::unique_ptr<LinOp>>* l_factors_10,
+    const std::vector<std::unique_ptr<LinOp>>* u_factors_01,
+    std::vector<std::unique_ptr<LinOp>>* schur_complement_in,
+    ValueType dummy_valuetype_var)
 {
     using csr = matrix::Csr<ValueType, IndexType>;
-    const auto l_factor = as<csr>(l_factors_10->linops->begin);
-    const auto u_factor = as<csr>(u_factors_01->linops->begin);
-    const auto schur_complement = as<csr>(schur_complement_in->begin);
-    spdgemm(exec, num_blocks, partitions, l_factor, u_factor, schur_complement);
+    // const auto schur_complement = as<csr>(schur_complement_in->begin);
+    // spdgemm(exec, num_blocks, partitions, l_factors_10, u_factors_01,
+    // schur_complement[0]);
 }
 
 template <typename ValueType, typename IndexType>

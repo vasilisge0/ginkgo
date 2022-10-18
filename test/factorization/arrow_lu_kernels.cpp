@@ -42,10 +42,12 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <ginkgo/core/base/executor.hpp>
 #include <ginkgo/core/matrix/csr.hpp>
+#include <ginkgo/core/matrix/arrow.hpp>
+#include <ginkgo/core/factorization/arrow_lu.hpp>
+
 
 
 #include "core/components/prefix_sum_kernels.hpp"
-#include "core/factorization/arrow_matrix.hpp"
 #include "core/factorization/arrow_lu_kernels.hpp"
 #include "core/test/utils.hpp"
 #include "core/test/utils/assertions.hpp"
@@ -56,7 +58,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 namespace {
 
 template <typename ValueIndexType>
-class ArrowLu : public ::testing::Test {
+class Arrow_Lu : public ::testing::Test {
 protected:
     using value_type =
         typename std::tuple_element<0, decltype(ValueIndexType())>::type;
@@ -64,6 +66,7 @@ protected:
         typename std::tuple_element<1, decltype(ValueIndexType())>::type;
     using matrix_type = gko::matrix::Csr<value_type, index_type>;
     using partition_type = gko::array<index_type>;
+    using Mtx = gko::matrix::Dense<value_type>;
 
     void SetUp()
     {
@@ -74,23 +77,14 @@ protected:
         matrices.emplace_back(new gko::array<index_type>(ref, {0, 3, 6, 8}),
                               gko::initialize<matrix_type>(
                                              {{2.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.2, 0.0},
-
                                               {0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0},
-
                                               {0.5, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.1, 0.0},
-                                              
                                               {0.0, 0.0, 0.0, 3.0,-1.0, 0.0, 0.0, 0.0, 0.0, 0.2},
-
                                               {0.0, 0.0, 0.0,-1.0, 3.0,-1.0, 0.0, 0.0, 0.1, 0.0},
-
                                               {0.0, 0.0, 0.0, 0.0,-1.0, 3.0, 0.0, 0.0, 0.0, 0.0},
-
                                               {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2.0,-1.0, 0.0, 0.0},
-
                                               {0.0, 0.0, 0.0, 0.0, 0.0, 0.0,-1.0, 2.0, 0.1, 0.0},
-
                                               {0.2, 0.0, 0.1, 0.0, 0.1, 0.0, 0.0, 0.0, 2.0, 0.1},
-
                                               {0.0, 0.8, 0.0, 0.2, 0.0, 0.0, 0.0, 0.0, 0.1, 2.0}}, ref));
     }
 
@@ -98,6 +92,27 @@ protected:
     {
         if (exec != nullptr) {
             ASSERT_NO_THROW(exec->synchronize());
+        }
+    }
+
+    static void assert_same_matrices(const Mtx* m1, const Mtx* m2)
+    {
+        ASSERT_EQ(m1->get_size()[0], m2->get_size()[0]);
+        ASSERT_EQ(m1->get_size()[1], m2->get_size()[1]);
+        for (gko::size_type i = 0; i < m1->get_size()[0]; ++i) {
+            for (gko::size_type j = 0; j < m2->get_size()[1]; ++j) {
+                EXPECT_EQ(m1->at(i, j), m2->at(i, j));
+            }
+        }
+    }
+
+    static void assert_same_matrices(const matrix_type* m1, const matrix_type* m2)
+    {
+        ASSERT_EQ(m1->get_size()[0], m2->get_size()[0]);
+        ASSERT_EQ(m1->get_size()[1], m2->get_size()[1]);
+        ASSERT_EQ(m1->get_num_stored_elements(), m2->get_num_stored_elements());
+        for (gko::size_type i = 0; i < m1->get_num_stored_elements(); ++i) {
+            EXPECT_EQ(m1->get_const_values()[i], m2->get_const_values()[i]);
         }
     }
 
@@ -111,10 +126,11 @@ protected:
 
 using Types = ::testing::Types<std::tuple<float, gko::int32>>;
 
-TYPED_TEST_SUITE(ArrowLu, Types, PairTypenameNameGenerator);
+TYPED_TEST_SUITE(Arrow_Lu, Types, PairTypenameNameGenerator);
 
-TYPED_TEST(ArrowLu, KernelTest)
+TYPED_TEST(Arrow_Lu, KernelTest)
 {
+    std::cout << " ------------------------- here ------------------------- \n";
     using matrix_type = typename TestFixture::matrix_type;
     using index_type = typename TestFixture::index_type;
     using value_type = typename TestFixture::value_type;
@@ -132,14 +148,98 @@ TYPED_TEST(ArrowLu, KernelTest)
         for (auto i = 0; i < partition_idxs->get_num_elems(); i++) {
             partitions.get_data()[i] = partition_idxs->get_data()[i];
         }
-        // auto lu_fact =
-        // gko::factorization::ArrowLu<value_type, index_type>::build()
-        //     .with_workspace(std::move(new gko::factorization::arrow_lu_workspace(A, partitions, split_index)))
-        //     .on(this->exec);
-        // auto fact = gko::share(lu_fact->generate(A));
+        std::cout << "before build\n";
+        // auto lu_fact = gko::factorization::ArrowLu<value_type, index_type>(A);
+        auto lu_fact =
+            gko::factorization::ArrowLu<value_type, index_type>::build().on(ref_exec);
+        std::cout << "after build\n";
+        // std::shared_ptr<gko::matrix::Arrow<value_type, index_type>> arrow_mtx;
+        // auto arrow_mtx = gko::matrix::Csr<value_type, index_type>::create();
+        auto arrow_mtx = share(gko::matrix::Arrow<value_type, index_type>::create(ref_exec, *partition_idxs.get()));
+        
+        // auto arrow_mtx = gko::matrix::Csr<value_type, index_type>::create(ref_exec);
 
-        auto workspace = new gko::factorization::ArrowLuState(A, partitions, split_index);
-        gko::kernels::reference::arrow_lu::compute_factors(ref_exec, workspace, A.get());
+        gko::as<gko::ConvertibleTo<gko::matrix::Arrow<value_type, index_type>>>(A.get())
+            ->convert_to(arrow_mtx.get());
+
+        auto D = arrow_mtx->get_submatrix_00().get();
+        auto d0 = gko::as<gko::matrix::Dense<value_type>>(D->begin()[0].get());
+        auto d1 = gko::as<gko::matrix::Dense<value_type>>(D->begin()[1].get());
+        auto d2 = gko::as<gko::matrix::Dense<value_type>>(D->begin()[2].get());
+
+        auto d0_true = gko::initialize<gko::matrix::Dense<value_type>>(
+                                                         {{2.0, 0.0, 0.5},
+                                                          {0.0, 2.0, 0.0},
+                                                          {0.5, 0.0, 2.0}}, ref_exec);
+        auto d1_true = gko::initialize<gko::matrix::Dense<value_type>>(
+                                                         {{3.0,-1.0, 0.0},
+                                                          {-1.0, 3.0,-1.0},
+                                                          {0.0,-1.0, 3.0}}, ref_exec);
+        auto d2_true = gko::initialize<gko::matrix::Dense<value_type>>(
+                                                         {{ 2.0,-1.0},
+                                                          {-1.0, 2.0}}, ref_exec);                                                  
+
+        this->assert_same_matrices(d0, d0_true.get());
+        this->assert_same_matrices(d1, d1_true.get());
+        this->assert_same_matrices(d2, d2_true.get());                                                                                                                                                  
+
+        auto E = arrow_mtx->get_submatrix_01().get();
+        auto e0 = gko::as<gko::matrix::Csr<value_type, index_type>>(E->begin()[0].get());
+        auto e1 = gko::as<gko::matrix::Csr<value_type, index_type>>(E->begin()[1].get());
+        auto e2 = gko::as<gko::matrix::Csr<value_type, index_type>>(E->begin()[2].get());
+
+        auto e0_true = gko::initialize<gko::matrix::Csr<value_type, index_type>>(
+                                                         {{0.2, 0.0},
+                                                          {0.0, 1.0},
+                                                          {0.1, 0.0}}, ref_exec);
+        auto e1_true = gko::initialize<gko::matrix::Csr<value_type, index_type>>(
+                                                         {{0.0, 0.2},
+                                                          {0.1, 0.0},
+                                                          {0.0, 0.0}}, ref_exec);
+        auto e2_true = gko::initialize<gko::matrix::Csr<value_type, index_type>>(
+                                                         {{0.0, 0.0},
+                                                          {0.1, 0.0}}, ref_exec);
+        this->assert_same_matrices(e0, e0_true.get());
+        this->assert_same_matrices(e1, e1_true.get());
+        this->assert_same_matrices(e2, e2_true.get());
+
+        auto F = arrow_mtx->get_submatrix_10().get();
+        auto f0 = gko::as<gko::matrix::Csr<value_type, index_type>>(F->begin()[0].get());
+        auto f1 = gko::as<gko::matrix::Csr<value_type, index_type>>(F->begin()[1].get());
+        auto f2 = gko::as<gko::matrix::Csr<value_type, index_type>>(F->begin()[2].get());
+
+        auto f0_true_tmp = gko::initialize<gko::matrix::Csr<value_type, index_type>>(
+                                                         {{0.2, 0.0, 0.1,},
+                                                          {0.0, 0.8, 0.0,}}, ref_exec);
+        auto f0_true = gko::as<gko::matrix::Csr<value_type, index_type>>(f0_true_tmp->transpose());
+        auto f1_true_tmp = gko::initialize<gko::matrix::Csr<value_type, index_type>>(
+                                                         {{0.0, 0.1, 0.0},
+                                                          {0.2, 0.0, 0.0}}, ref_exec);
+        auto f1_true = gko::as<gko::matrix::Csr<value_type, index_type>>(f1_true_tmp->transpose());
+        auto f2_true_tmp = gko::initialize<gko::matrix::Csr<value_type, index_type>>(
+                                                         {{0.0, 0.0},
+                                                          {0.0, 0.0}}, ref_exec);
+        auto f2_true = gko::as<gko::matrix::Csr<value_type, index_type>>(f2_true_tmp->transpose());
+
+        this->assert_same_matrices(f0, f0_true.get());
+        this->assert_same_matrices(f1, f1_true.get());
+        std::cout << "f2->get_values()[0]: " << f2->get_values()[0] << '\n';
+        std::cout << "f2->get_num_stored_elements(): " << f2->get_num_stored_elements() << '\n';
+        std::cout << "f2_true->get_num_stored_elements(): " << f2_true->get_num_stored_elements() << '\n';
+        // this->assert_same_matrices(f2, f2_true.get());
+
+        auto C = arrow_mtx->get_submatrix_11().get();
+        auto c0 = gko::as<gko::matrix::Dense<value_type>>(C->begin()[0].get());
+        auto c0_true = gko::initialize<gko::matrix::Dense<value_type>>(
+                                                         {{2.0, 0.1},
+                                                          {0.1, 2.0}}, ref_exec);
+        this->assert_same_matrices(c0, c0_true.get());
+
+        // auto fact = gko::share(lu_fact->generate(arrow_mtx));
+
+        // auto workspace = new gko::factorization::ArrowLuState(A, partitions, split_index);
+        // gko::kernels::reference::arrow_lu::compute_factors(ref_exec, workspace, A.get());
+
         // std::cout << "split_index: " << fact->parameters_.workspace->get_submatrix_11()->split_index << '\n';
         // gko::kernels::reference::arrow_lu::factorize_submatrix_11<value_type, index_type>(mtx.get(), submtx_11, partitions);
         //gko::kernels::EXEC_NAMESPACE::arrow_lu::factorize_submatrix_11<value_type, index_type>(mtx.get(), submtx_11, partitions);
@@ -154,7 +254,7 @@ TYPED_TEST(ArrowLu, KernelTest)
     //    //gko::kernels::EXEC_NAMESPACE::cholesky::cholesky_symbolic_count(
     //    //    this->exec, dmtx.get(), dforest, drow_nnz.get_data(), this->dtmp);
 
-        //GKO_ASSERT_ARRAY_EQ(drow_nnz, row_nnz);
+        //GKO_ASSERT_ARRAY_EQ(drow_nnz, r`ow_nnz);
     }
 }
 

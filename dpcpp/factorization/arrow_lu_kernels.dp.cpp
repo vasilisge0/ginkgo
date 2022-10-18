@@ -63,28 +63,35 @@ void factorize_diagonal_submatrix(
     std::shared_ptr<const DefaultExecutor> exec, dim<2> size,
     IndexType num_blocks, const IndexType* partitions,
     IndexType* a_cur_row_ptrs,
-    const factorization::arrow_lu::collection_of_matrices<ValueType>* matrices,
-    factorization::arrow_lu::collection_of_matrices<ValueType>* l_factors,
-    factorization::arrow_lu::collection_of_matrices<ValueType>* u_factors)
-    GKO_NOT_IMPLEMENTED;
-// const LinOp* a_linop,
-// LinOp* l_factors,
-// LinOp* u_factors) GKO_NOT_IMPLEMENTED;
+    const std::vector<std::unique_ptr<LinOp>>* matrices,
+    std::vector<std::unique_ptr<LinOp>>* l_factors,
+    std::vector<std::unique_ptr<LinOp>>* u_factors,
+    ValueType dummy_valuetype_var) GKO_NOT_IMPLEMENTED;
 
 GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
     GKO_DECLARE_ARROW_LU_FACTORIZE_DIAGONAL_SUBMATRIX_KERNEL);
 
 
 template <typename ValueType, typename IndexType>
+void factorize_off_diagonal_submatrix(
+    std::shared_ptr<const DefaultExecutor> exec, IndexType split_index,
+    IndexType num_blocks, const IndexType* partitions,
+    std::vector<std::unique_ptr<LinOp>>* triang_factors,
+    std::vector<std::unique_ptr<LinOp>>* off_diagonal_blocks,
+    ValueType dummy_valuetype_var) GKO_NOT_IMPLEMENTED;
+
+GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
+    GKO_DECLARE_ARROWLU_FACTORIZE_OFF_DIAGONAL_SUBMATRIX_KERNEL);
+
+
+template <typename ValueType, typename IndexType>
 void compute_schur_complement(
     std::shared_ptr<const DefaultExecutor> exec, IndexType num_blocks,
     const IndexType* partitions,
-    const factorization::arrow_lu::collection_of_matrices<ValueType>*
-        l_factors_10,
-    const factorization::arrow_lu::collection_of_matrices<ValueType>*
-        u_factors_01,
-    factorization::arrow_lu::collection_of_matrices<ValueType>*
-        schur_complement_in) GKO_NOT_IMPLEMENTED;
+    const std::vector<std::unique_ptr<LinOp>>* l_factors_10,
+    const std::vector<std::unique_ptr<LinOp>>* u_factors_01,
+    std::vector<std::unique_ptr<LinOp>>* schur_complement_in,
+    ValueType dummy_valuetype_var) GKO_NOT_IMPLEMENTED;
 
 GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
     GKO_DECLARE_ARROWLU_COMPUTE_SCHUR_COMPLEMENT_KERNEL);

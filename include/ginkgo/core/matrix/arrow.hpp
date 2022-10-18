@@ -122,7 +122,7 @@ namespace detail {}  // namespace detail
 template <typename ValueType = default_precision, typename IndexType = int32>
 class Arrow : public EnableLinOp<Arrow<ValueType, IndexType>>,
               public EnableCreateMethod<Arrow<ValueType, IndexType>>  //,
-//   public ConvertibleTo<Arrow<next_precision<ValueType>, IndexType>>//,
+//   public ConvertibleTo<Arrow<next_precision<ValueType>, IndexType>>, //,
 //              public ConvertibleTo<Dense<ValueType>>,
 //              public ConvertibleTo<Coo<ValueType, IndexType>>,
 //              public ConvertibleTo<Ell<ValueType, IndexType>>,
@@ -131,8 +131,8 @@ class Arrow : public EnableLinOp<Arrow<ValueType, IndexType>>,
 //              public ConvertibleTo<Sellp<ValueType, IndexType>>,
 //              public ConvertibleTo<SparsityCsr<ValueType, IndexType>>,
 //              public DiagonalExtractable<ValueType>,
-//              public ReadableFromMatrixData<ValueType, IndexType>,
-//              public WritableToMatrixData<ValueType, IndexType>,
+//  public ReadableFromMatrixData<ValueType, IndexType>,
+//  public WritableToMatrixData<ValueType, IndexType>
 //              public Transposable,
 //              public Permutable<IndexType>,
 //              public EnableAbsoluteComputation<
@@ -141,15 +141,15 @@ class Arrow : public EnableLinOp<Arrow<ValueType, IndexType>>,
 {
     friend class EnableCreateMethod<Arrow>;
     friend class EnablePolymorphicObject<Arrow, LinOp>;
-    //    friend class Coo<ValueType, IndexType>;
-    //    friend class Dense<ValueType>;
-    //    friend class Diagonal<ValueType>;
-    //    friend class Ell<ValueType, IndexType>;
-    //    friend class Hybrid<ValueType, IndexType>;
-    //    friend class Sellp<ValueType, IndexType>;
-    //    friend class SparsityCsr<ValueType, IndexType>;
-    //    friend class Fbcsr<ValueType, IndexType>;
-    //    friend class ArrowBuilder<ValueType, IndexType>;
+    friend class Coo<ValueType, IndexType>;
+    friend class Dense<ValueType>;
+    friend class Diagonal<ValueType>;
+    friend class Ell<ValueType, IndexType>;
+    friend class Hybrid<ValueType, IndexType>;
+    friend class Sellp<ValueType, IndexType>;
+    friend class SparsityCsr<ValueType, IndexType>;
+    friend class Fbcsr<ValueType, IndexType>;
+    friend class ArrowBuilder<ValueType, IndexType>;
     //    friend class Arrow<to_complex<ValueType>, IndexType>;
 
 public:
@@ -163,45 +163,49 @@ public:
     using device_mat_data = device_matrix_data<ValueType, IndexType>;
     using absolute_type = remove_complex<Arrow>;
 
-    /**
-     * Copy-assigns a Arrow matrix. Preserves executor, copies everything else.
-     */
-    Arrow& operator=(const Arrow&);
+    // /**
+    //  * Copy-assigns a Arrow matrix. Preserves executor, copies everything
+    //  else.
+    //  */
+    // Arrow& operator=(const Arrow&);
 
-    /**
-     * Move-assigns a Arrow matrix. Preserves executor, moves the data and
-     * leaves the moved-from object in an empty state (0x0 LinOp with unchanged
-     * executor and strategy, no nonzeros and valid row pointers).
-     */
-    Arrow& operator=(Arrow&&);
+    // /**
+    //  * Move-assigns a Arrow matrix. Preserves executor, moves the data and
+    //  * leaves the moved-from object in an empty state (0x0 LinOp with
+    //  unchanged
+    //  * executor and strategy, no nonzeros and valid row pointers).
+    //  */
+    // Arrow& operator=(Arrow&&);
 
-    //   Arrow(std::shared_ptr<const Executor> exec, array<index_type>&
-    //   partitions_in) {
-    //         this->partitions_ = std::move(partitions_in);
-    //     }
+    // //   Arrow(std::shared_ptr<const Executor> exec, array<index_type>&
+    // //   partitions_in) {
+    // //         this->partitions_ = std::move(partitions_in);
+    // //     }
 
-    Arrow() {}
+    // Arrow() {}
 
-    /**
-     * Copy-constructs a Arrow matrix. Inherits executor, strategy and data.
-     */
-    Arrow(const Arrow&);
+    // /**
+    //  * Copy-constructs a Arrow matrix. Inherits executor, strategy and data.
+    //  */
+    // Arrow(const Arrow&);
 
-    /**
-     * Move-constructs a Arrow matrix. Inherits executor and strategy, moves the
-     * data and leaves the moved-from object in an empty state (0x0 LinOp with
-     * unchanged executor and strategy, no nonzeros and valid row pointers).
-     */
-    Arrow(Arrow&&);
+    // /**
+    //  * Move-constructs a Arrow matrix. Inherits executor and strategy, moves
+    //  the
+    //  * data and leaves the moved-from object in an empty state (0x0 LinOp
+    //  with
+    //  * unchanged executor and strategy, no nonzeros and valid row pointers).
+    //  */
+    // Arrow(Arrow&&);
 
-    // friend class Csr<next_precision<ValueType>, IndexType>;
+    friend class Arrow<next_precision<ValueType>, IndexType>;
 
-    //    void convert_to(
-    //        Arrow<next_precision<ValueType>, IndexType>* result) const
-    //        override;
-    //
-    //    void move_to(Arrow<next_precision<ValueType>, IndexType>* result)
-    //    override;
+    // void convert_to(Arrow<next_precision<ValueType>, IndexType>* result)
+    // const
+    //     override;
+
+    // void move_to(Arrow<next_precision<ValueType>, IndexType>* result)
+    // override;
     //
     //    void convert_to(Dense<ValueType>* other) const override;
     //
@@ -234,7 +238,7 @@ public:
     //
     //    void convert_to(Arrow<ValueType, IndexType>* result) const override;
     //
-    //    void move_to(Arrow<ValueType, IndexType>* result) override;
+    // void move_to(Arrow<ValueType, IndexType>* result) override;
 
     //    void read(const mat_data& data) override;
     //
@@ -282,25 +286,46 @@ public:
     //
     //    void compute_absolute_inplace() override;
 
-    const IndexType* get_const_partition_idxs() const;
+    const IndexType* get_const_partition_idxs() const
+    {
+        return partitions_.get_const_data();
+    }
 
-    size_type get_partitions_num_elems() const;
+    size_type get_partitions_num_elems() const
+    {
+        return partitions_.get_num_elems();
+    }
 
-    void set_partitions(array<IndexType>& partitions_in);
+    void set_partitions(array<IndexType>& partitions_in)
+    {
+        partitions_ = partitions_in;
+    }
 
-    IndexType get_num_blocks();
+    IndexType get_num_blocks() { return partitions_.get_num_elems() - 1; }
 
     std::shared_ptr<std::vector<std::unique_ptr<gko::LinOp>>> get_submatrix_00()
-        const;
+        const
+    {
+        return submtx_00_;
+    }
 
     std::shared_ptr<std::vector<std::unique_ptr<gko::LinOp>>> get_submatrix_01()
-        const;
+        const
+    {
+        return submtx_01_;
+    }
 
     std::shared_ptr<std::vector<std::unique_ptr<gko::LinOp>>> get_submatrix_10()
-        const;
+        const
+    {
+        return submtx_10_;
+    }
 
     std::shared_ptr<std::vector<std::unique_ptr<gko::LinOp>>> get_submatrix_11()
-        const;
+        const
+    {
+        return submtx_11_;
+    }
 
 protected:
     Arrow(std::shared_ptr<const Executor> exec) : EnableLinOp<Arrow>(exec) {}
@@ -309,6 +334,14 @@ protected:
         : EnableLinOp<Arrow>(exec)
     {
         this->partitions_ = std::move(partitions);
+        submtx_00_ =
+            std::make_shared<std::vector<std::unique_ptr<gko::LinOp>>>();
+        submtx_01_ =
+            std::make_shared<std::vector<std::unique_ptr<gko::LinOp>>>();
+        submtx_10_ =
+            std::make_shared<std::vector<std::unique_ptr<gko::LinOp>>>();
+        submtx_11_ =
+            std::make_shared<std::vector<std::unique_ptr<gko::LinOp>>>();
     }
 
 private:
@@ -322,7 +355,6 @@ private:
 
     // void add_scaled_identity_impl(const LinOp* a, const LinOp* b) override;
 };
-
 
 namespace detail {}  // namespace detail
 }  // namespace matrix
