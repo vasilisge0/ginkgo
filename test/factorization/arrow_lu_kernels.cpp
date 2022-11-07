@@ -84,8 +84,8 @@ protected:
                                               {0.0, 0.0, 0.0, 0.0,-1.0, 3.0, 0.0, 0.0, 0.0, 0.0},
                                               {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2.0,-1.0, 0.0, 0.0},
                                               {0.0, 0.0, 0.0, 0.0, 0.0, 0.0,-1.0, 2.0, 0.1, 0.0},
-                                              {0.2, 0.0, 0.1, 0.0, 0.1, 0.0, 0.0, 0.0, 2.0, 0.1},
-                                              {0.0, 0.8, 0.0, 0.2, 0.0, 0.0, 0.0, 0.0, 0.1, 2.0}}, ref));
+                                              {0.2, 0.0, 0.1, 0.0, 0.1, 0.0, 0.1, 0.0, 2.0, 0.1},
+                                              {0.0, 0.8, 0.0, 0.2, 0.0, 0.0, 0.0, 0.1, 0.1, 2.0}}, ref));
     }
 
     void TearDown()
@@ -130,7 +130,6 @@ TYPED_TEST_SUITE(Arrow_Lu, Types, PairTypenameNameGenerator);
 
 TYPED_TEST(Arrow_Lu, KernelTest)
 {
-    std::cout << " ------------------------- here ------------------------- \n";
     using matrix_type = typename TestFixture::matrix_type;
     using index_type = typename TestFixture::index_type;
     using value_type = typename TestFixture::value_type;
@@ -139,7 +138,6 @@ TYPED_TEST(Arrow_Lu, KernelTest)
         //SCOPED_TRACE(pair.first);
         auto& partition_idxs = pair.first;
         //auto& mtx = pair.second;
-        std::cout << "testing\n";
         auto A = pair.second;
         auto dmtx = gko::clone(ref_exec, A);
         auto idx = partition_idxs->get_num_elems()-1;
@@ -148,11 +146,9 @@ TYPED_TEST(Arrow_Lu, KernelTest)
         for (auto i = 0; i < partition_idxs->get_num_elems(); i++) {
             partitions.get_data()[i] = partition_idxs->get_data()[i];
         }
-        std::cout << "before build\n";
         // auto lu_fact = gko::factorization::ArrowLu<value_type, index_type>(A);
         auto lu_fact =
             gko::factorization::ArrowLu<value_type, index_type>::build().on(ref_exec);
-        std::cout << "after build\n";
         // std::shared_ptr<gko::matrix::Arrow<value_type, index_type>> arrow_mtx;
         // auto arrow_mtx = gko::matrix::Csr<value_type, index_type>::create();
         auto arrow_mtx = share(gko::matrix::Arrow<value_type, index_type>::create(ref_exec, *partition_idxs.get()));
@@ -217,16 +213,13 @@ TYPED_TEST(Arrow_Lu, KernelTest)
                                                           {0.2, 0.0, 0.0}}, ref_exec);
         auto f1_true = gko::as<gko::matrix::Csr<value_type, index_type>>(f1_true_tmp->transpose());
         auto f2_true_tmp = gko::initialize<gko::matrix::Csr<value_type, index_type>>(
-                                                         {{0.0, 0.0},
-                                                          {0.0, 0.0}}, ref_exec);
+                                                         {{0.1, 0.0},
+                                                          {0.0, 0.1}}, ref_exec);
         auto f2_true = gko::as<gko::matrix::Csr<value_type, index_type>>(f2_true_tmp->transpose());
 
         this->assert_same_matrices(f0, f0_true.get());
         this->assert_same_matrices(f1, f1_true.get());
-        std::cout << "f2->get_values()[0]: " << f2->get_values()[0] << '\n';
-        std::cout << "f2->get_num_stored_elements(): " << f2->get_num_stored_elements() << '\n';
-        std::cout << "f2_true->get_num_stored_elements(): " << f2_true->get_num_stored_elements() << '\n';
-        // this->assert_same_matrices(f2, f2_true.get());
+        this->assert_same_matrices(f2, f2_true.get());
 
         auto C = arrow_mtx->get_submatrix_11().get();
         auto c0 = gko::as<gko::matrix::Dense<value_type>>(C->begin()[0].get());
@@ -234,27 +227,15 @@ TYPED_TEST(Arrow_Lu, KernelTest)
                                                          {{2.0, 0.1},
                                                           {0.1, 2.0}}, ref_exec);
         this->assert_same_matrices(c0, c0_true.get());
-
-        // auto fact = gko::share(lu_fact->generate(arrow_mtx));
-
-        // auto workspace = new gko::factorization::ArrowLuState(A, partitions, split_index);
-        // gko::kernels::reference::arrow_lu::compute_factors(ref_exec, workspace, A.get());
-
-        // std::cout << "split_index: " << fact->parameters_.workspace->get_submatrix_11()->split_index << '\n';
-        // gko::kernels::reference::arrow_lu::factorize_submatrix_11<value_type, index_type>(mtx.get(), submtx_11, partitions);
-        //gko::kernels::EXEC_NAMESPACE::arrow_lu::factorize_submatrix_11<value_type, index_type>(mtx.get(), submtx_11, partitions);
-
-        //auto forest = gko::factorization::compute_elim_forest(mtx.get());
-    //    //auto dforest = gko::factorization::compute_elim_forest(dmtx.get());
-    //    //gko::array<index_type> row_nnz{this->ref, mtx->get_size()[0]};
-    //    //gko::array<index_type> drow_nnz{this->exec, mtx->get_size()[0]};
-
-    //    //gko::kernels::reference::cholesky::cholesky_symbolic_count(
-    //    //    this->ref, mtx.get(), forest, row_nnz.get_data(), this->tmp);
-    //    //gko::kernels::EXEC_NAMESPACE::cholesky::cholesky_symbolic_count(
-    //    //    this->exec, dmtx.get(), dforest, drow_nnz.get_data(), this->dtmp);
-
-        //GKO_ASSERT_ARRAY_EQ(drow_nnz, r`ow_nnz);
+        std::cout << "<<<before generate>>>\n";
+        auto fact = gko::share(lu_fact->generate(arrow_mtx));
+        std::cout << "after generate\n";
+        std::cout << " --- printout --- " << '\n';
+        
+        // auto y = gko::as<gko::matrix::Dense<value_type>>(t0[0].get());
+        // std::cout << "t0[0].get_values()[0]: " << gko::as<gko::matrix::Dense>(t0[0]).get_values()[0] << '\n';
+        // std::cout << "arrow_mtx->get_submtx_00().get_values()[0]: " << arrow_mtx->get_submatrix_00()[0].get_values()[0] << '\n';
+        //GKO_ASSERT_ARRAY_EQ(drow_nnz, row_nnz);
     }
 }
 

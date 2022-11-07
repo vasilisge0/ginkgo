@@ -34,14 +34,18 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define GKO_CORE_FACTORIZATION_ARROW_LU_KERNELS_HPP_
 
 
+#include <memory>
+
+
 #include <ginkgo/core/base/array.hpp>
+#include <ginkgo/core/base/composition.hpp>
+#include <ginkgo/core/base/executor.hpp>
+#include <ginkgo/core/base/lin_op.hpp>
 #include <ginkgo/core/base/math.hpp>
 #include <ginkgo/core/base/types.hpp>
-// #include <ginkgo/core/factorization/arrow_lu.hpp>
+#include <ginkgo/core/factorization/arrow_lu.hpp>
+#include <ginkgo/core/matrix/csr.hpp>
 #include <ginkgo/core/matrix/dense.hpp>
-#include <ginkgo/core/stop/stopping_status.hpp>
-
-#include "core/factorization/arrow_matrix.hpp"
 
 #include "core/base/kernel_declaration.hpp"
 
@@ -49,46 +53,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 namespace gko {
 namespace kernels {
 
+
 const double PIVOT_THRESHOLD = 1e-11;
 const double PIVOT_AUGMENTATION = 1e-8;  // officially it is sqrt(eps)*||A||_1
-
-// // Factorization kernels.
-
-
-// #define GKO_DECLARE_GENERATE_ARROWLU_KERNEL(ValueType, IndexType) \
-// std::unique_ptr<Composition<ValueType>> ArrowLu<ValueType, IndexType>::generate( \
-//     const std::shared_ptr<const Lin>& arrow_system_matrix) const;
-
-// #define GKO_DECLARE_ALL_AS_TEMPLATES                  \
-//     template <typename ValueType, typename IndexType> \
-//     GKO_DECLARE_GENERATE_ARROWLU_KERNEL(ValueType, IndexType)
-
-// GKO_DECLARE_FOR_ALL_EXECUTOR_NAMESPACES(arrow_lu,
-//     GKO_DECLARE_ALL_AS_TEMPLATES);
-
-// #undef GKO_DECLARE_ALL_AS_TEMPLATES
-
-
-// #define GKO_DECLARE_ARROW_LU_COMPUTE_FACTORS_KERNEL(ValueType, IndexType) \
-//     void compute_factors(                                                 \
-//         std::shared_ptr<const DefaultExecutor> exec,                      \
-//         factorization::ArrowLuState<ValueType, IndexType>* workspace,     \
-//         const gko::matrix::Csr<ValueType, IndexType>* mtx);
-
-
-// #define GKO_DECLARE_ALL_AS_TEMPLATES                  \
-//     template <typename ValueType, typename IndexType> \
-//     GKO_DECLARE_ARROW_LU_COMPUTE_FACTORS_KERNEL(ValueType, IndexType)
-
-// GKO_DECLARE_FOR_ALL_EXECUTOR_NAMESPACES(arrow_lu,
-// GKO_DECLARE_ALL_AS_TEMPLATES);
-
-
-// #undef GKO_DECLARE_ALL_AS_TEMPLATES
-
-
-// }  // namespace kernels
-// }  // namespace gko
 
 
 #define GKO_DECLARE_ARROWLU_FACTORIZE_DIAGONAL_SUBMATRIX_KERNEL(ValueType, \
@@ -100,16 +67,17 @@ const double PIVOT_AUGMENTATION = 1e-8;  // officially it is sqrt(eps)*||A||_1
         const std::vector<std::unique_ptr<LinOp>>* matrices,               \
         std::vector<std::unique_ptr<LinOp>>* l_factors,                    \
         std::vector<std::unique_ptr<LinOp>>* u_factors,                    \
-        ValueType dummy_valuetype_var);
+        ValueType dummy_valuetype_var)
 
 #define GKO_DECLARE_ARROWLU_FACTORIZE_OFF_DIAGONAL_SUBMATRIX_KERNEL(ValueType, \
                                                                     IndexType) \
     void factorize_off_diagonal_submatrix(                                     \
         std::shared_ptr<const DefaultExecutor> exec, IndexType split_index,    \
         IndexType num_blocks, const IndexType* partitions,                     \
+        std::vector<std::unique_ptr<LinOp>>* a_off_diagonal_blocks,            \
         std::vector<std::unique_ptr<LinOp>>* triang_factors,                   \
         std::vector<std::unique_ptr<LinOp>>* off_diagonal_blocks,              \
-        ValueType dummy_valuetype_var);
+        ValueType dummy_valuetype_var)
 
 #define GKO_DECLARE_ARROWLU_COMPUTE_SCHUR_COMPLEMENT_KERNEL(ValueType,     \
                                                             IndexType)     \
@@ -119,75 +87,22 @@ const double PIVOT_AUGMENTATION = 1e-8;  // officially it is sqrt(eps)*||A||_1
         const std::vector<std::unique_ptr<LinOp>>* l_factors_10,           \
         const std::vector<std::unique_ptr<LinOp>>* u_factors_01,           \
         std::vector<std::unique_ptr<LinOp>>* schur_complement_in,          \
-        ValueType dummy_valuetype_var);
+        ValueType dummy_valuetype_var)
 
-#define GKO_DECLARE_ALL_AS_TEMPLATES                                       \
-    template <typename ValueType, typename IndexType>                      \
-    GKO_DECLARE_ARROWLU_FACTORIZE_DIAGONAL_SUBMATRIX_KERNEL(ValueType,     \
-                                                            IndexType)     \
-    template <typename ValueType, typename IndexType>                      \
-    GKO_DECLARE_ARROWLU_FACTORIZE_OFF_DIAGONAL_SUBMATRIX_KERNEL(ValueType, \
-                                                                IndexType) \
-    template <typename ValueType, typename IndexType>                      \
+#define GKO_DECLARE_ALL_AS_TEMPLATES                                        \
+    template <typename ValueType, typename IndexType>                       \
+    GKO_DECLARE_ARROWLU_FACTORIZE_DIAGONAL_SUBMATRIX_KERNEL(ValueType,      \
+                                                            IndexType);     \
+    template <typename ValueType, typename IndexType>                       \
+    GKO_DECLARE_ARROWLU_FACTORIZE_OFF_DIAGONAL_SUBMATRIX_KERNEL(ValueType,  \
+                                                                IndexType); \
+    template <typename ValueType, typename IndexType>                       \
     GKO_DECLARE_ARROWLU_COMPUTE_SCHUR_COMPLEMENT_KERNEL(ValueType, IndexType)
 
 GKO_DECLARE_FOR_ALL_EXECUTOR_NAMESPACES(arrow_lu, GKO_DECLARE_ALL_AS_TEMPLATES);
 
 #undef GKO_DECLARE_ALL_AS_TEMPLATES
 
-// namespace dpcpp {
-// /**
-//  * @brief The arrow_lu namespace.
-//  *
-//  * @ingroup factor
-//  */
-// namespace arrow_lu {
-
-// template <typename ValueType, typename IndexType>
-// void factorize_diagonal_submatrix(
-//     std::shared_ptr<const DefaultExecutor> exec,
-//     dim<2> size,
-//     IndexType num_blocks,
-//     const IndexType* partitions,
-//     IndexType* a_cur_row_ptrs,
-//     const LinOp* a_linop,
-//     LinOp* l_factors,
-//     LinOp* u_factors) GKO_NOT_IMPLEMENTED;
-
-// GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
-//     GKO_DECLARE_ARROW_LU_FACTORIZE_DIAGONAL_SUBMATRIX_KERNEL);
-
-
-// }  // namespace arrow_lu
-// }  // namespace dpcpp
-
-// namespace hip {
-// /**
-//  * @brief The arrow_lu namespace.
-//  *
-//  * @ingroup factor
-//  */
-// namespace arrow_lu {
-
-// template <typename ValueType, typename IndexType>
-// void factorize_diagonal_submatrix(
-//     std::shared_ptr<const DefaultExecutor> exec,
-//     dim<2> size,
-//     IndexType num_blocks,
-//     const IndexType* partitions,
-//     IndexType* a_cur_row_ptrs,
-//     const LinOp* a_linop,
-//     LinOp* l_factors,
-//     LinOp* u_factors) GKO_NOT_IMPLEMENTED;
-
-// GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
-//     GKO_DECLARE_ARROW_LU_FACTORIZE_DIAGONAL_SUBMATRIX_KERNEL);
-
-// }  // namespace arrow_lu
-// }  // namespace hip
-
-
-// GKO_ENABLE_IMPLEMENTATION_SELECTION(select_compute_factors, compute_factors);
 
 }  // namespace kernels
 }  // namespace gko

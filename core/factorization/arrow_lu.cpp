@@ -1,4 +1,4 @@
-/*******************************<GINKGO LICENSE>******************************
+/*******************************<GINK GO LICENSE>******************************
 Copyright (c) 2017-2022, the Ginkgo authors
 All rights reserved.
 
@@ -43,7 +43,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // #include <ginkgo/core/base/types.hpp>
 // #include <ginkgo/core/matrix/coo.hpp>
 // #include <ginkgo/core/matrix/csr.hpp>
-#include <ginkgo/core/factorization/arrow_lu.hpp>
 
 
 // #include "core/components/format_conversion_kernels.hpp"
@@ -60,13 +59,15 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <memory>
 
 
-#include <ginkgo/core/base/array.hpp>
+// #include <ginkgo/core/base/array.hpp>
 #include <ginkgo/core/base/exception_helpers.hpp>
+#include <ginkgo/core/base/polymorphic_object.hpp>
+#include <ginkgo/core/base/types.hpp>
 #include <ginkgo/core/factorization/arrow_lu.hpp>
 
 
-// #include "core/factorization/factorization_kernels.hpp"
 #include "core/factorization/arrow_lu_kernels.hpp"
+#include "core/factorization/factorization_kernels.hpp"
 
 
 // #include <ginkgo/core/matrix/arrow.hpp>
@@ -82,13 +83,16 @@ GKO_REGISTER_OPERATION(factorize_off_diagonal_submatrix,
                        arrow_lu::factorize_off_diagonal_submatrix);
 GKO_REGISTER_OPERATION(compute_schur_complement,
                        arrow_lu::compute_schur_complement);
+GKO_REGISTER_OPERATION(add_diagonal_elements,
+                       factorization::add_diagonal_elements);
 
 }  // anonymous namespace
 }  // namespace arrow_lu
 
 
 template <typename ValueType, typename IndexType>
-std::unique_ptr<Composition<ValueType>> ArrowLu<ValueType, IndexType>::generate(
+std::unique_ptr<Composition<ValueType>>
+ArrowLu<ValueType, IndexType>::compute_factors(
     const std::shared_ptr<const LinOp>& system_matrix) const
 {
     using CsrMatrix = matrix::Csr<ValueType, IndexType>;
@@ -100,60 +104,83 @@ std::unique_ptr<Composition<ValueType>> ArrowLu<ValueType, IndexType>::generate(
     // Converts the system matrix to Arrow.
     // Throws an exception if it is not convertible.
     const auto exec = this->get_executor();
+    auto arrow_system_matrix = as<ArrowMatrix>(system_matrix);
+    const auto partition_idxs = arrow_system_matrix->get_const_partition_idxs();
+    auto num_blocks = arrow_system_matrix->get_partitions_num_elems() - 1;
+    const auto split_index = partition_idxs[num_blocks];
+    array<IndexType> a_cur_row_ptrs = {exec, num_blocks + 1};
 
-    // // conversion should be performed beforehand
-    // // auto arrow_system_matrix = ArrowMatrix::create(exec, partitions);
-    // auto arrow_system_matrix =
-    //     as<ArrowMatrix>(system_matrix);  // (!) note: dynamic_cast
-    // const auto partition_idxs =
-    // arrow_system_matrix->get_const_partition_idxs(); const auto num_blocks =
-    // arrow_system_matrix->get_partitions_num_elems() - 1; const auto
-    // split_index = partition_idxs[num_blocks]; array<IndexType> a_cur_row_ptrs
-    // = {exec, num_blocks + 1};
-    std::shared_ptr<matrix::Arrow<ValueType, IndexType>> l_factor;
-    std::shared_ptr<matrix::Arrow<ValueType, IndexType>> u_factor;
+    array<IndexType> p1 = {exec, num_blocks + 1};
+    exec->copy(num_blocks + 1, arrow_system_matrix->get_const_partition_idxs(),
+               p1.get_data());
+    array<IndexType> p2 = {exec, num_blocks + 1};
+    exec->copy(num_blocks + 1, arrow_system_matrix->get_const_partition_idxs(),
+               p2.get_data());
+    auto l_factor =
+        share(gko::matrix::Arrow<value_type, index_type>::create(exec, p1));
+    auto u_factor =
+        share(gko::matrix::Arrow<value_type, index_type>::create(exec, p2));
+    ValueType dummy_valuetype_var;
 
-    // // Dummy variable for deducing the ValueType.
-    // ValueType dummy_valuetype_var;
+    // Computes submatrix_00 of l_factor and u_factor.
+    l_factor->get_submatrix_00().get()->resize(num_blocks);
+    u_factor->get_submatrix_00().get()->resize(num_blocks);
+    exec->run(arrow_lu::make_factorize_diagonal_submatrix(
+        arrow_system_matrix->get_size(), static_cast<IndexType>(num_blocks),
+        partition_idxs, a_cur_row_ptrs.get_data(),
+        arrow_system_matrix->get_submatrix_00().get(),
+        l_factor->get_submatrix_00().get(), u_factor->get_submatrix_00().get(),
+        dummy_valuetype_var));
 
-    // // Factorizes blocks of submatrix_00.
-    // exec->run(arrow_lu::make_factorize_diagonal_submatrix(
-    //     arrow_system_matrix->get_size(), static_cast<IndexType>(num_blocks),
-    //     partition_idxs, a_cur_row_ptrs.get_data(),
-    //     arrow_system_matrix->get_submatrix_00().get(),
-    //     l_factor->get_submatrix_00().get(),
-    //     u_factor->get_submatrix_00().get(), dummy_valuetype_var));
+    // Computes submatrix_01 of u_factor.
+    u_factor->get_submatrix_01().get()->resize(num_blocks);
+    exec->run(arrow_lu::make_factorize_off_diagonal_submatrix(
+        split_index, static_cast<IndexType>(num_blocks), partition_idxs,
+        arrow_system_matrix->get_submatrix_01().get(),
+        l_factor->get_submatrix_00().get(), u_factor->get_submatrix_01().get(),
+        dummy_valuetype_var));
 
-    // // Factorizes blocks of submatrix_01.
-    // exec->run(arrow_lu::make_factorize_off_diagonal_submatrix(
-    //     split_index, static_cast<IndexType>(num_blocks), partition_idxs,
-    //     l_factor->get_submatrix_00().get(),
-    //     u_factor->get_submatrix_01().get(), dummy_valuetype_var));
+    // Computes submatrix_10 of l_factor.
+    l_factor->get_submatrix_10().get()->resize(num_blocks);
+    exec->run(arrow_lu::make_factorize_off_diagonal_submatrix(
+        split_index, static_cast<IndexType>(num_blocks), partition_idxs,
+        arrow_system_matrix->get_submatrix_10().get(),
+        u_factor->get_submatrix_00().get(), l_factor->get_submatrix_10().get(),
+        dummy_valuetype_var));
 
-    // // Factorizes blocks of submatrix_10.
-    // exec->run(arrow_lu::make_factorize_off_diagonal_submatrix(
-    //     split_index, static_cast<IndexType>(num_blocks), partition_idxs,
-    //     u_factor->get_submatrix_00().get(),
-    //     l_factor->get_submatrix_10().get(), dummy_valuetype_var));
+    // Computes schur complement.
+    exec->run(arrow_lu::make_compute_schur_complement(
+        static_cast<IndexType>(num_blocks), partition_idxs,
+        l_factor->get_submatrix_10().get(), u_factor->get_submatrix_01().get(),
+        arrow_system_matrix->get_submatrix_11().get(), dummy_valuetype_var));
 
-    // // Computes schur complement.
-    // exec->run(arrow_lu::make_compute_schur_complement(
-    //     static_cast<IndexType>(num_blocks), partition_idxs,
-    //     l_factor->get_submatrix_10().get(),
-    //     u_factor->get_submatrix_01().get(),
-    //     arrow_system_matrix->get_submatrix_11().get(), dummy_valuetype_var));
+    // Computes submatrix_11 of l_factor and u_factor.
+    IndexType one = 1;
+    array<IndexType> partitions_last = {exec, 2};
+    partitions_last.get_data()[0] = partition_idxs[num_blocks];
+    partitions_last.get_data()[0] = arrow_system_matrix->get_size()[0];
+    l_factor->get_submatrix_11().get()->resize(1);
+    u_factor->get_submatrix_11().get()->resize(1);
+    exec->run(arrow_lu::make_factorize_diagonal_submatrix(
+        arrow_system_matrix->get_size(), static_cast<IndexType>(1),
+        partitions_last.get_data(), a_cur_row_ptrs.get_data(),
+        arrow_system_matrix->get_submatrix_11().get(),
+        l_factor->get_submatrix_11().get(), u_factor->get_submatrix_11().get(),
+        dummy_valuetype_var));
 
-    // // Factorizes submatrix_11.
-    // IndexType one = 1;
-    // array<IndexType> partitions_last = {exec, 2};
-    // partitions_last.get_data()[0] = partition_idxs[num_blocks];
-    // partitions_last.get_data()[0] = arrow_system_matrix->get_size()[0];
-    // exec->run(arrow_lu::make_factorize_diagonal_submatrix(
-    //     arrow_system_matrix->get_size(), static_cast<IndexType>(1),
-    //     partitions_last.get_data(), a_cur_row_ptrs.get_data(),
-    //     arrow_system_matrix->get_submatrix_11().get(),
-    //     l_factor->get_submatrix_11().get(),
-    //     u_factor->get_submatrix_11().get(), dummy_valuetype_var));
+    auto t = l_factor->get_submatrix_00();
+    auto t0 = t->begin()[0].get();
+    auto y = gko::as<gko::matrix::Dense<value_type>>(t0);
+    // std::cout << "\n";
+    // std::cout << "y->get_values()[0]: " << y->get_values()[0] << '\n';
+    // std::cout << "y->get_values()[1]: " << y->get_values()[1] << '\n';
+    // std::cout << "y->get_values()[2]: " << y->get_values()[2] << '\n';
+    // std::cout << "y->get_values()[3]: " << y->get_values()[3] << '\n';
+    // std::cout << "y->get_values()[4]: " << y->get_values()[4] << '\n';
+    // std::cout << "y->get_values()[5]: " << y->get_values()[5] << '\n';
+    // std::cout << "y->get_values()[6]: " << y->get_values()[6] << '\n';
+    // std::cout << "y->get_values()[7]: " << y->get_values()[7] << '\n';
+    // std::cout << "y->get_values()[8]: " << y->get_values()[8] << '\n';
 
     return Composition<ValueType>::create(std::move(l_factor),
                                           std::move(u_factor));

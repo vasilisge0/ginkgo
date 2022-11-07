@@ -79,12 +79,10 @@ protected:
         : Composition<ValueType>{factory->get_executor()},
           parameters_{factory->get_parameters()}
     {
-        std::cout << "before generate" << '\n';
-        // generate(system_matrix)
-        //     ->move_to(this);
+        compute_factors(system_matrix)->move_to(this);
     }
 
-    std::unique_ptr<Composition<ValueType>> generate(
+    std::unique_ptr<Composition<ValueType>> compute_factors(
         const std::shared_ptr<const LinOp>& arrow_system_matrix) const;
 };
 

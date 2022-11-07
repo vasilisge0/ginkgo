@@ -44,6 +44,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "core/components/prefix_sum_kernels.hpp"
 #include "core/components/reduce_array_kernels.hpp"
 #include "core/distributed/partition_kernels.hpp"
+#include "core/factorization/arrow_lu_kernels.hpp"
 #include "core/factorization/cholesky_kernels.hpp"
 #include "core/factorization/factorization_kernels.hpp"
 #include "core/factorization/ic_kernels.hpp"
@@ -662,6 +663,20 @@ GKO_STUB_VALUE_AND_INDEX_TYPE(GKO_DECLARE_CHOLESKY_SYMBOLIC_FACTORIZE);
 
 
 }  // namespace cholesky
+
+
+namespace arrow_lu {
+
+
+GKO_STUB_VALUE_AND_INDEX_TYPE(
+    GKO_DECLARE_ARROWLU_FACTORIZE_DIAGONAL_SUBMATRIX_KERNEL);
+GKO_STUB_VALUE_AND_INDEX_TYPE(
+    GKO_DECLARE_ARROWLU_FACTORIZE_OFF_DIAGONAL_SUBMATRIX_KERNEL);
+GKO_STUB_VALUE_AND_INDEX_TYPE(
+    GKO_DECLARE_ARROWLU_COMPUTE_SCHUR_COMPLEMENT_KERNEL);
+
+
+}  // namespace arrow_lu
 
 
 namespace factorization {

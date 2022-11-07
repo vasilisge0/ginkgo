@@ -649,21 +649,40 @@ void convert_to_arrow(std::shared_ptr<const DefaultExecutor> exec,
 
     // Extracts submatrix_10 in Csr format.
     {
+        std::cout << "submatrix_10\n";
         gko::span rspan{static_cast<size_type>(partitions[num_blocks]),
                         source->get_size()[1]};
-        gko::span cspan{0, static_cast<size_type>(partitions[num_blocks] - 1)};
+        gko::span cspan{0, static_cast<size_type>(partitions[num_blocks])};
         array<IndexType> row_nnz = {
             exec, source->get_size()[1] -
                       static_cast<size_type>(partitions[num_blocks]) + 1};
+        std::cout << "source->get_size()[1] - "
+                     "static_cast<size_type>(partitions[num_blocks] + 1): "
+                  << source->get_size()[1] -
+                         static_cast<size_type>(partitions[num_blocks]) + 1
+                  << '\n';
         row_nnz.fill(0);
         gko::kernels::reference::csr::calculate_nonzeros_per_row_in_span(
             exec, source, rspan, cspan, &row_nnz);
-        std::cout << "row_nnz.get_num_elems(): " << row_nnz.get_num_elems()
+        std::cout << "rspan.begin: " << rspan.begin
+                  << ", rspan.end: " << rspan.end << '\n';
+        std::cout << "cspan.begin: " << cspan.begin
+                  << ", cspan.end: " << cspan.end << '\n';
+        std::cout << "--> row_nnz.get_num_elems(): " << row_nnz.get_num_elems()
                   << '\n';
+        std::cout << "row_nnz.get_data()[0]: " << row_nnz.get_data()[0] << '\n';
+        std::cout << "row_nnz.get_data()[1]: " << row_nnz.get_data()[1] << '\n';
+        std::cout << "row_nnz.get_data()[2]: " << row_nnz.get_data()[2] << '\n';
         components::prefix_sum(exec, row_nnz.get_data(),
                                row_nnz.get_num_elems());
+        std::cout << "row_nnz.get_data()[0]: " << row_nnz.get_data()[0] << '\n';
+        std::cout << "row_nnz.get_data()[1]: " << row_nnz.get_data()[1] << '\n';
+        std::cout << "row_nnz.get_data()[2]: " << row_nnz.get_data()[2] << '\n';
+        std::cout << "row_nnz.get_num_elems(): " << row_nnz.get_num_elems()
+                  << '\n';
 
         auto num_nnz = row_nnz.get_data()[rspan.length()];
+        std::cout << "num_nnz: " << num_nnz << '\n';
 
         auto submtx_csr = matrix::Csr<ValueType, IndexType>::create(
             exec, gko::dim<2>(rspan.length(), cspan.length()),

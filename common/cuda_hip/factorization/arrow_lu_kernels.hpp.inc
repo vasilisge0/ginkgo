@@ -30,6 +30,8 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ******************************<GINKGO LICENSE>*******************************/
 
+#include "core/factorization/arrow_lu_kernels.hpp"
+
 #define PIVOT_AUGMENTATION 1e-8
 
 // Computes the dense LU factors of the diagonal blocks of submatrix_11.
@@ -68,15 +70,24 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //     }
 // }
 
-template <typename ValueType, typename IndexType>
-void void factorize_diagonal_submatrix(
-    std::shared_ptr<const DefaultExecutor> exec, dim<2> size,
-    IndexType num_blocks, const IndexType* partitions,
-    IndexType* a_cur_row_ptrs, const LinOp* matrices, LinOp* l_factors,
-    LinOp* u_factors, ValueType dummy_valuetype_var) GKO_NOT_IMPLEMENTED;
+namespace kernel {
 
-GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
-    GKO_DECLARE_ARROW_LU_FACTORIZE_DIAGONAL_SUBMATRIX_KERNEL);
+
+// template <typename ValueType, typename IndexType>
+// void void factorize_diagonal_submatrix(
+//     std::shared_ptr<const DefaultExecutor> exec,
+//     dim<2> size,
+//     IndexType num_blocks,
+//     const IndexType* partitions,
+//     IndexType* a_cur_row_ptrs,
+//     const std::vector<std::unique_ptr<LinOp>>* matrices,
+//     std::vector<std::unique_ptr<LinOp>>* l_factors,
+//     std::vector<std::unique_ptr<LinOp>>* u_factors,
+//     ValueType dummy_valuetype_var
+//     ) GKO_NOT_IMPLEMENTED;
+
+// GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
+//     GKO_DECLARE_ARROW_LU_FACTORIZE_DIAGONAL_SUBMATRIX_KERNEL);
 
 // Checks rows row_start, ..., row_end of submatrix_12 and returns the entry
 // (row_min_out, col_min_out) as well as the number of entries with the same
@@ -316,3 +327,5 @@ __global__ __launch_bounds__(block_size) void step_1_impl_symbolic_count_kernel(
                                  // should be something in the description
                                  // of this function to detail it.
 }
+
+}  // namespace kernel

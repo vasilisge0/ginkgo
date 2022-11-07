@@ -38,33 +38,33 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // #include <memory>
 
 
-// #include <ginkgo/core/matrix/arrow.hpp>
-// #include <ginkgo/core/matrix/csr.hpp>
+#include <ginkgo/core/matrix/arrow.hpp>
+#include <ginkgo/core/matrix/csr.hpp>
 
 
-// #include "core/components/fill_array_kernels.hpp"
-// #include "core/components/prefix_sum_kernels.hpp"
-// #include "cuda/base/cusparse_bindings.hpp"
-// #include "cuda/base/math.hpp"
-// #include "cuda/components/cooperative_groups.cuh"
-// #include "cuda/components/intrinsics.cuh"
-// #include "cuda/components/prefix_sum.cuh"
-// #include "cuda/components/reduction.cuh"
-// #include "cuda/components/searching.cuh"
-// #include "cuda/components/sorting.cuh"
-// #include "cuda/components/thread_ids.cuh"
+#include "core/components/fill_array_kernels.hpp"
+#include "core/components/prefix_sum_kernels.hpp"
+#include "cuda/base/cusparse_bindings.hpp"
+#include "cuda/base/math.hpp"
+#include "cuda/components/cooperative_groups.cuh"
+#include "cuda/components/intrinsics.cuh"
+#include "cuda/components/prefix_sum.cuh"
+#include "cuda/components/reduction.cuh"
+#include "cuda/components/searching.cuh"
+#include "cuda/components/sorting.cuh"
+#include "cuda/components/thread_ids.cuh"
 
-// #include "core/factorization/arrow_lu_kernels.hpp"
+#include "core/factorization/arrow_lu_kernels.hpp"
 
-// namespace gko {
-// namespace kernels {
-// namespace cuda {
-// /**
-//  * @brief The Cholesky namespace.
-//  *
-//  * @ingroup factor
-//  */
-// namespace arrow_lu {
+namespace gko {
+namespace kernels {
+namespace cuda {
+/**
+ * @brief The Cholesky namespace.
+ *
+ * @ingroup factor
+ */
+namespace arrow_lu {
 
 // // #include "common/cuda_hip/factorization/arrow_lu_kernels.hpp.inc"
 
@@ -849,7 +849,51 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // // GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
 // //     GKO_DECLARE_ARROW_LU_COMPUTE_FACTORS_KERNEL);
 
-// }  // namespace arrow_lu
-// }  // namespace cuda
-// }  // namespace kernels
-// }  // namespace gko
+template <typename ValueType, typename IndexType>
+void factorize_diagonal_submatrix(
+    std::shared_ptr<const DefaultExecutor> exec, dim<2> size,
+    IndexType num_blocks, const IndexType* partitions,
+    IndexType* a_cur_row_ptrs,
+    const std::vector<std::unique_ptr<LinOp>>* matrices,
+    std::vector<std::unique_ptr<LinOp>>* l_factors,
+    std::vector<std::unique_ptr<LinOp>>* u_factors,
+    ValueType dummy_valuetype_var)
+{}
+
+GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
+    GKO_DECLARE_ARROWLU_FACTORIZE_DIAGONAL_SUBMATRIX_KERNEL);
+
+
+// Step 3 of computing LU factors of submatrix_12. Sets up the
+// nonzero entries of submatrix_12 of U factor.
+template <typename ValueType, typename IndexType>
+void factorize_off_diagonal_submatrix(
+    std::shared_ptr<const DefaultExecutor> exec, IndexType split_index,
+    IndexType num_blocks, const IndexType* partitions,
+    std::vector<std::unique_ptr<LinOp>>* a_off_diagonal_blocks,
+    std::vector<std::unique_ptr<LinOp>>* triang_factors,
+    std::vector<std::unique_ptr<LinOp>>* off_diagonal_blocks,
+    ValueType dummy_valuetype_var)
+{}
+
+GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
+    GKO_DECLARE_ARROWLU_FACTORIZE_OFF_DIAGONAL_SUBMATRIX_KERNEL);
+
+
+template <typename ValueType, typename IndexType>
+void compute_schur_complement(
+    std::shared_ptr<const DefaultExecutor> exec, IndexType num_blocks,
+    const IndexType* partitions,
+    const std::vector<std::unique_ptr<LinOp>>* l_factors_10,
+    const std::vector<std::unique_ptr<LinOp>>* u_factors_01,
+    std::vector<std::unique_ptr<LinOp>>* schur_complement_in,
+    ValueType dummy_valuetype_var)
+{}
+
+GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
+    GKO_DECLARE_ARROWLU_COMPUTE_SCHUR_COMPLEMENT_KERNEL);
+
+}  // namespace arrow_lu
+}  // namespace cuda
+}  // namespace kernels
+}  // namespace gko

@@ -4,11 +4,11 @@
 
 #include "core/components/prefix_sum_kernels.hpp"
 #include "core/factorization/arrow_lu_kernels.hpp"
-#include "core/factorization/arrow_matrix.hpp"
+
 
 namespace gko {
 namespace kernels {
-namespace reference {
+namespace omp {
 /**
  * @brief The ArrowLu namespace.
  *
@@ -257,6 +257,7 @@ void compute_dense_lu_kernel(const matrix::Dense<ValueType>* mtx,
     }
 }
 
+
 // Computes the dense LU factors of the diagonal blocks of submatrix_11.
 template <typename ValueType, typename IndexType>
 void factorize_diagonal_submatrix(
@@ -292,6 +293,8 @@ void factorize_diagonal_submatrix(
     // }
 }
 
+GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
+    GKO_DECLARE_ARROWLU_FACTORIZE_DIAGONAL_SUBMATRIX_KERNEL);
 
 // Step 3 of computing LU factors of submatrix_12. Sets up the
 // nonzero entries of submatrix_12 of U factor.
@@ -299,6 +302,7 @@ template <typename ValueType, typename IndexType>
 void factorize_off_diagonal_submatrix(
     std::shared_ptr<const DefaultExecutor> exec, IndexType split_index,
     IndexType num_blocks, const IndexType* partitions,
+    std::vector<std::unique_ptr<LinOp>>* a_off_diagonal_blocks,
     std::vector<std::unique_ptr<LinOp>>* triang_factors,
     std::vector<std::unique_ptr<LinOp>>* off_diagonal_blocks,
     ValueType dummy_valuetype_var)
@@ -454,6 +458,9 @@ void compute_schur_complement(
     // schur_complement);
 }
 
+GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
+    GKO_DECLARE_ARROWLU_COMPUTE_SCHUR_COMPLEMENT_KERNEL);
+
 template <typename ValueType, typename IndexType>
 std::unique_ptr<matrix::Arrow<ValueType, IndexType>> create_factor(
     std::shared_ptr<const DefaultExecutor> exec,
@@ -589,6 +596,6 @@ std::unique_ptr<matrix::Arrow<ValueType, IndexType>> create_u_factor(
 }
 
 }  // namespace arrow_lu
-}  // namespace reference
+}  // namespace omp
 }  // namespace kernels
 }  // namespace gko
