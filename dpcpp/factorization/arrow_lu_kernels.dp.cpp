@@ -58,40 +58,25 @@ GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
     GKO_DECLARE_ARROW_LU_COMPUTE_FACTORS_KERNEL);
 
 template <typename ValueType, typename IndexType>
-void factorize_diagonal_submatrix(std::shared_ptr<const DefaultExecutor> exec,
-                                  IndexType t, ValueType v)
-{
-    std::cout << "testing\n";
-}
+void factorize_diagonal_submatrix(
+    std::shared_ptr<const DefaultExecutor> exec, dim<2> size,
+    IndexType num_blocks const IndexType* partitions, IndexType* a_cur_row_ptrs,
+    const std::shared_ptr<gko::matrix::Csr<ValueType, IndexType>> matrices,
+    std::shared_ptr<gko::matrix::Csr<ValueType, IndexType>> l_factors,
+    std::shared_ptr<gko::matrix::Csr<ValueType, IndexType>> u_factors)
+    GKO_NOT_IMPLEMENTED;
 
 GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
-    GKO_DECLARE_ARROWLU_FACTORIZE_DIAGONAL_SUBMATRIX_KERNEL);
-
-// template <typename ValueType, typename IndexType>
-// void factorize_diagonal_submatrix(
-//     std::shared_ptr<const DefaultExecutor> exec,
-//     dim<2> size,
-//     IndexType num_blocks
-//     const IndexType* partitions,
-//     IndexType* a_cur_row_ptrs,
-//     const std::vector<std::unique_ptr<LinOp>>* matrices,
-//     std::vector<std::unique_ptr<LinOp>>* l_factors,
-//     std::vector<std::unique_ptr<LinOp>>* u_factors,
-//     ValueType dummy_valuetype_var
-//     ) GKO_NOT_IMPLEMENTED;
-
-// GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
-//     GKO_DECLARE_ARROW_LU_FACTORIZE_DIAGONAL_SUBMATRIX_KERNEL);
-
+    GKO_DECLARE_ARROW_LU_FACTORIZE_DIAGONAL_SUBMATRIX_KERNEL);
 
 template <typename ValueType, typename IndexType>
 void factorize_off_diagonal_submatrix(
     std::shared_ptr<const DefaultExecutor> exec, IndexType split_index,
     IndexType num_blocks, const IndexType* partitions,
-    std::vector<std::unique_ptr<LinOp>>* a_off_diagonal_blocks,
-    std::vector<std::unique_ptr<LinOp>>* triang_factors,
-    std::vector<std::unique_ptr<LinOp>>* off_diagonal_blocks,
-    ValueType dummy_valuetype_var) GKO_NOT_IMPLEMENTED;
+    std::shared_ptr<matrix::Csr<ValueType, IndexType>> a_off_diagonal_blocks,
+    std::shared_ptr<matrix::Csr<ValueType, IndexType>> triang_factors,
+    std::shared_ptr<matrix::Csr<ValueType, IndexType>> off_diagonal_blocks)
+    GKO_NOT_IMPLEMENTED;
 
 // GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
 //     GKO_DECLARE_ARROWLU_FACTORIZE_OFF_DIAGONAL_SUBMATRIX_KERNEL);
@@ -108,6 +93,20 @@ void compute_schur_complement(
 
 // GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
 //     GKO_DECLARE_ARROWLU_COMPUTE_SCHUR_COMPLEMENT_KERNEL);
+//
+
+template <typename ValueType, typename IndexType>
+void factorize_schur_complement(
+    std::shared_ptr<const DefaultExecutor> exec, dim<2> size,
+    IndexType num_blocks, const IndexType* partitions,
+    IndexType* a_cur_row_ptrs,
+    const std::shared_ptr<matrix::Dense<ValueType>> matrices,
+    std::shared_ptr<matrix::Dense<ValueType>> l_factors,
+    std::shared_ptr<matrix::Dense<ValueType>> u_factors)
+{}
+
+GKO_INSTANTIATE_FOR_EACH_VALUE_AND_INDEX_TYPE(
+    GKO_DECLARE_ARROWLU_FACTORIZE_SCHUR_COMPLEMENT_KERNEL);
 
 }  // namespace arrow_lu
 }  // namespace dpcpp

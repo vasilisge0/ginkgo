@@ -79,7 +79,8 @@ protected:
         : Composition<ValueType>{factory->get_executor()},
           parameters_{factory->get_parameters()}
     {
-        compute_factors(system_matrix)->move_to(this);
+        compute_factors(system_matrix);
+        //->move_to(this);
     }
 
     std::unique_ptr<Composition<ValueType>> compute_factors(

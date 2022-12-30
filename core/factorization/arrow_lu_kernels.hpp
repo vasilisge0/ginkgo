@@ -64,40 +64,54 @@ const double PIVOT_AUGMENTATION = 1e-8;  // officially it is sqrt(eps)*||A||_1
         std::shared_ptr<const DefaultExecutor> exec, dim<2> size,          \
         IndexType num_blocks, const IndexType* partitions,                 \
         IndexType* a_cur_row_ptrs,                                         \
-        const std::vector<std::unique_ptr<LinOp>>* matrices,               \
-        std::vector<std::unique_ptr<LinOp>>* l_factors,                    \
-        std::vector<std::unique_ptr<LinOp>>* u_factors,                    \
-        ValueType dummy_valuetype_var)
+        const std::shared_ptr<gko::matrix::Csr<ValueType, IndexType>>      \
+            matrices,                                                      \
+        std::shared_ptr<gko::matrix::Csr<ValueType, IndexType>> l_factors, \
+        std::shared_ptr<gko::matrix::Csr<ValueType, IndexType>> u_factors)
 
 #define GKO_DECLARE_ARROWLU_FACTORIZE_OFF_DIAGONAL_SUBMATRIX_KERNEL(ValueType, \
                                                                     IndexType) \
     void factorize_off_diagonal_submatrix(                                     \
         std::shared_ptr<const DefaultExecutor> exec, IndexType split_index,    \
         IndexType num_blocks, const IndexType* partitions,                     \
-        std::vector<std::unique_ptr<LinOp>>* a_off_diagonal_blocks,            \
-        std::vector<std::unique_ptr<LinOp>>* triang_factors,                   \
-        std::vector<std::unique_ptr<LinOp>>* off_diagonal_blocks,              \
-        ValueType dummy_valuetype_var)
+        std::shared_ptr<gko::matrix::Csr<ValueType, IndexType>>                \
+            a_off_diagonal_blocks,                                             \
+        std::shared_ptr<gko::matrix::Csr<ValueType, IndexType>>                \
+            triang_factors,                                                    \
+        std::shared_ptr<gko::matrix::Csr<ValueType, IndexType>>                \
+            off_diagonal_blocks)
 
-#define GKO_DECLARE_ARROWLU_COMPUTE_SCHUR_COMPLEMENT_KERNEL(ValueType,     \
-                                                            IndexType)     \
-    void compute_schur_complement(                                         \
-        std::shared_ptr<const DefaultExecutor> exec, IndexType num_blocks, \
-        const IndexType* partitions,                                       \
-        const std::vector<std::unique_ptr<LinOp>>* l_factors_10,           \
-        const std::vector<std::unique_ptr<LinOp>>* u_factors_01,           \
-        std::vector<std::unique_ptr<LinOp>>* schur_complement_in,          \
-        ValueType dummy_valuetype_var)
+#define GKO_DECLARE_ARROWLU_COMPUTE_SCHUR_COMPLEMENT_KERNEL(ValueType,         \
+                                                            IndexType)         \
+    void compute_schur_complement(                                             \
+        std::shared_ptr<const DefaultExecutor> exec, IndexType num_blocks,     \
+        const IndexType* partitions,                                           \
+        const std::shared_ptr<matrix::Csr<ValueType, IndexType>> l_factors_10, \
+        const std::shared_ptr<matrix::Csr<ValueType, IndexType>> u_factors_01, \
+        std::shared_ptr<LinOp> schur_complement_in)
 
-#define GKO_DECLARE_ALL_AS_TEMPLATES                                        \
-    template <typename ValueType, typename IndexType>                       \
-    GKO_DECLARE_ARROWLU_FACTORIZE_DIAGONAL_SUBMATRIX_KERNEL(ValueType,      \
-                                                            IndexType);     \
-    template <typename ValueType, typename IndexType>                       \
-    GKO_DECLARE_ARROWLU_FACTORIZE_OFF_DIAGONAL_SUBMATRIX_KERNEL(ValueType,  \
-                                                                IndexType); \
-    template <typename ValueType, typename IndexType>                       \
-    GKO_DECLARE_ARROWLU_COMPUTE_SCHUR_COMPLEMENT_KERNEL(ValueType, IndexType)
+#define GKO_DECLARE_ARROWLU_FACTORIZE_SCHUR_COMPLEMENT_KERNEL(ValueType, \
+                                                              IndexType) \
+    void factorize_schur_complement(                                     \
+        std::shared_ptr<const DefaultExecutor> exec, dim<2> size,        \
+        IndexType num_blocks, const IndexType* partitions,               \
+        IndexType* a_cur_row_ptrs,                                       \
+        const std::shared_ptr<gko::matrix::Dense<ValueType>> matrices,   \
+        std::shared_ptr<gko::matrix::Dense<ValueType>> l_factors,        \
+        std::shared_ptr<gko::matrix::Dense<ValueType>> u_factors)
+
+#define GKO_DECLARE_ALL_AS_TEMPLATES                                           \
+    template <typename ValueType, typename IndexType>                          \
+    GKO_DECLARE_ARROWLU_FACTORIZE_DIAGONAL_SUBMATRIX_KERNEL(ValueType,         \
+                                                            IndexType);        \
+    template <typename ValueType, typename IndexType>                          \
+    GKO_DECLARE_ARROWLU_FACTORIZE_OFF_DIAGONAL_SUBMATRIX_KERNEL(ValueType,     \
+                                                                IndexType);    \
+    template <typename ValueType, typename IndexType>                          \
+    GKO_DECLARE_ARROWLU_COMPUTE_SCHUR_COMPLEMENT_KERNEL(ValueType, IndexType); \
+    template <typename ValueType, typename IndexType>                          \
+    GKO_DECLARE_ARROWLU_FACTORIZE_SCHUR_COMPLEMENT_KERNEL(ValueType,           \
+                                                          IndexType)
 
 GKO_DECLARE_FOR_ALL_EXECUTOR_NAMESPACES(arrow_lu, GKO_DECLARE_ALL_AS_TEMPLATES);
 

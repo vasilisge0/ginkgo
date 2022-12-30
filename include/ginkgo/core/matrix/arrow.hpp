@@ -303,28 +303,41 @@ public:
 
     IndexType get_num_blocks() { return partitions_.get_num_elems() - 1; }
 
-    std::shared_ptr<std::vector<std::unique_ptr<gko::LinOp>>> get_submatrix_00()
-        const
+    std::shared_ptr<Csr<ValueType, IndexType>> get_submatrix_00() const
     {
         return submtx_00_;
     }
 
-    std::shared_ptr<std::vector<std::unique_ptr<gko::LinOp>>> get_submatrix_01()
-        const
+    std::shared_ptr<Csr<ValueType, IndexType>> get_submatrix_01() const
     {
         return submtx_01_;
     }
 
-    std::shared_ptr<std::vector<std::unique_ptr<gko::LinOp>>> get_submatrix_10()
-        const
+    std::shared_ptr<Csr<ValueType, IndexType>> get_submatrix_10() const
     {
         return submtx_10_;
     }
 
-    std::shared_ptr<std::vector<std::unique_ptr<gko::LinOp>>> get_submatrix_11()
-        const
+    std::shared_ptr<LinOp> get_submatrix_11() const { return submtx_11_; }
+
+    void set_submatrix_00(std::shared_ptr<Csr<ValueType, IndexType>> submtx_00)
     {
-        return submtx_11_;
+        this->submtx_00_ = std::move(submtx_00);
+    }
+
+    void set_submatrix_01(std::shared_ptr<Csr<ValueType, IndexType>> submtx_01)
+    {
+        this->submtx_01_ = std::move(submtx_01);
+    }
+
+    void set_submatrix_10(std::shared_ptr<Csr<ValueType, IndexType>> submtx_10)
+    {
+        this->submtx_10_ = std::move(submtx_10);
+    }
+
+    void set_submatrix_11(std::shared_ptr<LinOp> submtx_11)
+    {
+        this->submtx_11_ = std::move(submtx_11);
     }
 
 protected:
@@ -334,24 +347,31 @@ protected:
         : EnableLinOp<Arrow>(exec)
     {
         this->partitions_ = std::move(partitions);
-        submtx_00_ =
-            std::make_shared<std::vector<std::unique_ptr<gko::LinOp>>>();
-        submtx_01_ =
-            std::make_shared<std::vector<std::unique_ptr<gko::LinOp>>>();
-        submtx_10_ =
-            std::make_shared<std::vector<std::unique_ptr<gko::LinOp>>>();
-        submtx_11_ =
-            std::make_shared<std::vector<std::unique_ptr<gko::LinOp>>>();
+        // this->submtx_00_ = std::make_shared<Csr<ValueType, IndexType>>();
     }
+
+    // Arrow(std::shared_ptr<const Executor> exec, array<IndexType>& partitions,
+    //    std::unique_ptr<Csr<ValueType, IndexType>> submtx_00,
+    //    std::unique_ptr<Csr<ValueType, IndexType>> submtx_01,
+    //    std::unique_ptr<Csr<ValueType, IndexType>> submtx_10,
+    //    std::unique_ptr<LinOp> submtx_10)
+    //    : EnableLinOp<Arrow>(exec)
+    //{
+    //    this->partitions_ = std::move(partitions);
+    //    //this->submtx_00_ = std::move(submtx_00);
+    //    //this->submtx_01_ = std::move(submtx_01);
+    //    //this->submtx_10_ = std::move(submtx_10);
+    //    //this->submtx_11_ = std::move(submtx_11);
+    //}
 
 private:
     using csr = matrix::Csr<ValueType, IndexType>;
     using dense = matrix::Dense<ValueType>;
     array<index_type> partitions_;
-    std::shared_ptr<std::vector<std::unique_ptr<gko::LinOp>>> submtx_00_;
-    std::shared_ptr<std::vector<std::unique_ptr<gko::LinOp>>> submtx_01_;
-    std::shared_ptr<std::vector<std::unique_ptr<gko::LinOp>>> submtx_10_;
-    std::shared_ptr<std::vector<std::unique_ptr<gko::LinOp>>> submtx_11_;
+    std::shared_ptr<Csr<ValueType, IndexType>> submtx_00_;
+    std::shared_ptr<Csr<ValueType, IndexType>> submtx_01_;
+    std::shared_ptr<Csr<ValueType, IndexType>> submtx_10_;
+    std::shared_ptr<LinOp> submtx_11_;
 
     // void add_scaled_identity_impl(const LinOp* a, const LinOp* b) override;
 };

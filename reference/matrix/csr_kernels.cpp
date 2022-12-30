@@ -579,7 +579,6 @@ void compute_vector_of_blocks(std::shared_ptr<const DefaultExecutor> exec,
     }
 }
 
-
 template <typename ValueType, typename IndexType>
 void convert_to_arrow(std::shared_ptr<const DefaultExecutor> exec,
                       const matrix::Csr<ValueType, IndexType>* source,
@@ -591,9 +590,9 @@ void convert_to_arrow(std::shared_ptr<const DefaultExecutor> exec,
     auto num_blocks = result->get_num_blocks();
 
     // Converts submatrix_00 from Csr to vector<LinOp>.
-    for (auto block = 0; block < num_blocks; block++) {
-        const auto row_start = static_cast<size_type>(partitions[block]);
-        const auto row_end = static_cast<size_type>(partitions[block + 1]);
+    {
+        const size_type row_start = 0;
+        const auto row_end = static_cast<size_type>(partitions[num_blocks]);
         const auto num_rows = row_end - row_start;
         const auto num_cols = num_rows;
         const dim<2> block_size = {num_rows, num_cols};
@@ -602,24 +601,16 @@ void convert_to_arrow(std::shared_ptr<const DefaultExecutor> exec,
         array<IndexType> row_nnz = {exec, block_size[0] + 1};
         gko::kernels::reference::csr::calculate_nonzeros_per_row_in_span(
             exec, source, rspan, cspan, &row_nnz);
-
         components::prefix_sum(exec, row_nnz.get_data(),
                                row_nnz.get_num_elems());
         auto num_nnz = row_nnz.get_data()[rspan.length()];
-
         auto submtx_csr = matrix::Csr<ValueType, IndexType>::create(
             exec, gko::dim<2>(rspan.length(), cspan.length()),
             std::move(gko::array<ValueType>(exec, num_nnz)),
             std::move(gko::array<IndexType>(exec, num_nnz)),
             std::move(row_nnz));
         compute_submatrix(exec, source, rspan, cspan, submtx_csr.get());
-        array<ValueType> tmp_array = {exec, block_size[0] * block_size[1]};
-        // auto submtx_dense = matrix::Dense<ValueType>::create(
-        //     exec, block_size, std::move(tmp_array), stride);
-
-        auto submtx_dense = matrix::Dense<ValueType>::create(exec);
-        submtx_csr->convert_to(submtx_dense.get());
-        result->get_submatrix_00().get()->push_back(std::move((submtx_dense)));
+        result->set_submatrix_00(std::move(submtx_csr));
     }
 
     // Extracts submatrix_01 in Csr format.
@@ -632,68 +623,37 @@ void convert_to_arrow(std::shared_ptr<const DefaultExecutor> exec,
         row_nnz.fill(0);
         gko::kernels::reference::csr::calculate_nonzeros_per_row_in_span(
             exec, source, rspan, cspan, &row_nnz);
-
         components::prefix_sum(exec, row_nnz.get_data(),
                                row_nnz.get_num_elems());
         auto num_nnz = row_nnz.get_data()[rspan.length()];
-
         auto submtx_csr = matrix::Csr<ValueType, IndexType>::create(
             exec, gko::dim<2>(rspan.length(), cspan.length()),
             std::move(gko::array<ValueType>(exec, num_nnz)),
             std::move(gko::array<IndexType>(exec, num_nnz)),
             std::move(row_nnz));
         compute_submatrix(exec, source, rspan, cspan, submtx_csr.get());
-        compute_vector_of_blocks(exec, num_blocks, partitions, submtx_csr.get(),
-                                 result->get_submatrix_01().get());
+        result->set_submatrix_01(std::move(submtx_csr));
     }
 
     // Extracts submatrix_10 in Csr format.
     {
-        std::cout << "submatrix_10\n";
         gko::span rspan{static_cast<size_type>(partitions[num_blocks]),
                         source->get_size()[1]};
         gko::span cspan{0, static_cast<size_type>(partitions[num_blocks])};
         array<IndexType> row_nnz = {
             exec, source->get_size()[1] -
                       static_cast<size_type>(partitions[num_blocks]) + 1};
-        std::cout << "source->get_size()[1] - "
-                     "static_cast<size_type>(partitions[num_blocks] + 1): "
-                  << source->get_size()[1] -
-                         static_cast<size_type>(partitions[num_blocks]) + 1
-                  << '\n';
         row_nnz.fill(0);
         gko::kernels::reference::csr::calculate_nonzeros_per_row_in_span(
             exec, source, rspan, cspan, &row_nnz);
-        std::cout << "rspan.begin: " << rspan.begin
-                  << ", rspan.end: " << rspan.end << '\n';
-        std::cout << "cspan.begin: " << cspan.begin
-                  << ", cspan.end: " << cspan.end << '\n';
-        std::cout << "--> row_nnz.get_num_elems(): " << row_nnz.get_num_elems()
-                  << '\n';
-        std::cout << "row_nnz.get_data()[0]: " << row_nnz.get_data()[0] << '\n';
-        std::cout << "row_nnz.get_data()[1]: " << row_nnz.get_data()[1] << '\n';
-        std::cout << "row_nnz.get_data()[2]: " << row_nnz.get_data()[2] << '\n';
-        components::prefix_sum(exec, row_nnz.get_data(),
-                               row_nnz.get_num_elems());
-        std::cout << "row_nnz.get_data()[0]: " << row_nnz.get_data()[0] << '\n';
-        std::cout << "row_nnz.get_data()[1]: " << row_nnz.get_data()[1] << '\n';
-        std::cout << "row_nnz.get_data()[2]: " << row_nnz.get_data()[2] << '\n';
-        std::cout << "row_nnz.get_num_elems(): " << row_nnz.get_num_elems()
-                  << '\n';
-
         auto num_nnz = row_nnz.get_data()[rspan.length()];
-        std::cout << "num_nnz: " << num_nnz << '\n';
-
         auto submtx_csr = matrix::Csr<ValueType, IndexType>::create(
             exec, gko::dim<2>(rspan.length(), cspan.length()),
             std::move(gko::array<ValueType>(exec, num_nnz)),
             std::move(gko::array<IndexType>(exec, num_nnz)),
             std::move(row_nnz));
         compute_submatrix(exec, source, rspan, cspan, submtx_csr.get());
-        auto tmp = share(submtx_csr->transpose());
-        auto t = as<matrix::Csr<ValueType, IndexType>>(tmp);
-        compute_vector_of_blocks(exec, num_blocks, partitions, t.get(),
-                                 result->get_submatrix_10().get());
+        result->set_submatrix_10(std::move(submtx_csr));
     }
 
     // Extracts submatrix_11 in dense format
@@ -726,7 +686,7 @@ void convert_to_arrow(std::shared_ptr<const DefaultExecutor> exec,
         auto submtx_dense = matrix::Dense<ValueType>::create(
             exec, block_size, std::move(tmp_array), stride);
         submtx_csr->convert_to(submtx_dense.get());
-        result->get_submatrix_11().get()->push_back(std::move(submtx_dense));
+        result->set_submatrix_11(std::move(submtx_dense));
     }
 }
 
